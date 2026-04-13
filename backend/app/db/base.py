@@ -4,7 +4,6 @@ from sqlalchemy import Column, DateTime, func
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 
-
 class Base(DeclarativeBase):
     """All models inherit from this — gives every table id + timestamps."""
     pass

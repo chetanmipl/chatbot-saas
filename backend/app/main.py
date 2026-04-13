@@ -5,7 +5,10 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.db.session import engine
+import app.db.registry  # noqa: F401, F403 - import all models for SQLAlchemy
 from app.db.base import Base
+from app.api.v1.endpoints.auth import router as auth_router
+
 
 
 @asynccontextmanager
@@ -42,7 +45,13 @@ app.add_middleware(
 
 # ── Routes (we'll add these phase by phase) ───────────────────────
 # from app.api.v1 import router as api_router
-# app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
+
+@app.get("/")
+async def root():
+    """Root endpoint — can be used for a quick sanity check."""
+    return {"message": f"Welcome to {settings.APP_NAME} API!"}
 
 
 @app.get("/health")
