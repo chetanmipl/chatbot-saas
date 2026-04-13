@@ -1,0 +1,42 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+sqlalchemy[asyncio]
+asyncpg
+alembic
+pgvector
+
+# Auth
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+
+# AI — works with Ollama (free) AND OpenAI (when you're ready)
+langchain
+langchain-community      # has Ollama integration
+langchain-openai         # optional, only if you add OpenAI key
+llama-index
+llama-index-embeddings-ollama
+llama-index-llms-ollama
+ollama                   # official Ollama Python client
+
+# Background Tasks
+celery[redis]   
+redis
+
+# HTTP
+httpx
+
+# Validation
+pydantic
+pydantic-settings
+
+# File Parsing for RAG
+pypdf
+python-docx
+
+# Billing (test mode = free)
+stripe  
