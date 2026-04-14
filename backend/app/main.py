@@ -7,8 +7,11 @@ from app.core.config import settings
 from app.db.session import engine
 import app.db.registry  # noqa: F401, F403 - import all models for SQLAlchemy
 from app.db.base import Base
-from app.api.v1.endpoints.auth import router as auth_router
 
+from app.api.v1.endpoints.auth      import router as auth_router
+from app.api.v1.endpoints.chatbots  import router as chatbots_router
+from app.api.v1.endpoints.documents import router as documents_router
+from app.api.v1.endpoints.chat      import router as chat_router
 
 
 @asynccontextmanager
@@ -47,6 +50,9 @@ app.add_middleware(
 # from app.api.v1 import router as api_router
 
 app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
+app.include_router(chatbots_router,  prefix=settings.API_V1_PREFIX)
+app.include_router(documents_router, prefix=settings.API_V1_PREFIX)
+app.include_router(chat_router,      prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():
