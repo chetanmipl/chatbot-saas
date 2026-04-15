@@ -17,12 +17,18 @@ python-dotenv
 
 # AI — works with Ollama (free) AND OpenAI (when you're ready)
 langchain
+langchain-core
+langchain-embeddings
+langchain-groq
+langchain-huggingface
+sentence-transformers
 langchain-community      # has Ollama integration
 langchain-openai         # optional, only if you add OpenAI key
 llama-index
 llama-index-embeddings-ollama
 llama-index-llms-ollama
 ollama                   # official Ollama Python client
+
 
 # Background Tasks
 celery[redis]   

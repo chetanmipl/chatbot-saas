@@ -21,6 +21,7 @@ async def get_current_user(
     validates it, and returns the logged-in User object.
     Add this as a dependency to any route that needs auth.
     """
+    print(f"DEBUG token received: {credentials.credentials[:50]}...")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -28,6 +29,7 @@ async def get_current_user(
     )
     try:
         payload = decode_token(credentials.credentials)
+        print(f"DEBUG token payload: {payload}")
         user_id: str = payload.get("sub")
         token_type: str = payload.get("type")
         if user_id is None or token_type != "access":
@@ -37,6 +39,7 @@ async def get_current_user(
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
+    print(f"DEBUG user from DB: {user}")
 
     if user is None or not user.is_active:
         raise credentials_exception
@@ -50,6 +53,7 @@ async def get_current_tenant(
     """Returns the tenant that the current user belongs to."""
     result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
     tenant = result.scalar_one_or_none()
+    
     if not tenant or not tenant.is_active:
         raise HTTPException(status_code=403, detail="Tenant not found or inactive")
     return tenant   

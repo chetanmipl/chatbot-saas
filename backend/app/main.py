@@ -46,7 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routes (we'll add these phase by phase) ───────────────────────
+
 # from app.api.v1 import router as api_router
 
 app.include_router(auth_router, prefix=settings.API_V1_PREFIX)

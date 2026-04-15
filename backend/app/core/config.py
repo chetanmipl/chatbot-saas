@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    GROQ_API_KEY: str
+    GROQ_MODEL: str = "llama3-8b-8192"
 
     # ── File Storage ──────────────────────────────────
     UPLOAD_DIR: str = "./uploads"
