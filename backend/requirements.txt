@@ -2,6 +2,7 @@
 fastapi
 uvicorn[standard]
 python-multipart
+aiofiles
 
 # Database
 sqlalchemy[asyncio]
@@ -17,8 +18,9 @@ python-dotenv
 
 # AI — works with Ollama (free) AND OpenAI (when you're ready)
 langchain
+langchain_ollama
 langchain-core
-langchain-embeddings
+# langchain-embeddings
 langchain-groq
 langchain-huggingface
 sentence-transformers
