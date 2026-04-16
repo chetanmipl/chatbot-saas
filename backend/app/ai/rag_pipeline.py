@@ -30,7 +30,7 @@ async def retrieve_relevant_chunks(
     Uses pgvector's <-> operator (cosine distance).
     """
     query_embedding = await embed_text(query)
-    embedding_str = json.dumps(query_embedding)
+    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
     # pgvector similarity search — finds top_k closest vectors
     sql = text(
@@ -39,11 +39,11 @@ async def retrieve_relevant_chunks(
             content,
             filename,
             chunk_index,
-            1 - (embedding <-> :embedding::vector) AS similarity
+            1 - (embedding <-> CAST(:embedding AS vector)) AS similarity
         FROM document_chunks
-        WHERE chatbot_id = :chatbot_id
-          AND tenant_id  = :tenant_id
-        ORDER BY embedding <-> :embedding::vector
+        WHERE chatbot_id = CAST(:chatbot_id AS uuid)
+          AND tenant_id  = CAST(:tenant_id AS uuid)
+        ORDER BY embedding <-> CAST(:embedding AS vector)
         LIMIT :top_k
     """
     )

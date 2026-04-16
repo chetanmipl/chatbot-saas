@@ -3,6 +3,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 aiofiles
+aiofiles
 
 # Database
 sqlalchemy[asyncio]
