@@ -17,9 +17,9 @@ class DocumentChunk(Base, UUIDMixin, TimestampMixin):
     filename    = Column(String(500), nullable=False) # for showing source in UI
 
     # The vector embedding — 768 dimensions for nomic-embed-text
-    # embedding   = Column(Vector(768), nullable=True)
+    embedding   = Column(Vector(768), nullable=True)
     # The vector embedding — 768 dimensions for hugging-face sentence-transformers/all-MiniLM-L6-v2
-    embedding = Column(Vector(384), nullable=True)
+    #embedding = Column(Vector(384), nullable=True)
 
     # Foreign keys for isolation
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
