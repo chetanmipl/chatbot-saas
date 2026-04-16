@@ -19,6 +19,7 @@ python-dotenv
 # AI — works with Ollama (free) AND OpenAI (when you're ready)
 langchain
 langchain-core
+langchain_ollama
 # langchain-embeddings
 langchain-groq
 langchain-huggingface
