@@ -3,8 +3,8 @@ fastapi
 uvicorn[standard]
 python-multipart
 aiofiles
-aiofiles
 
+numpy
 # Database
 sqlalchemy[asyncio]
 asyncpg

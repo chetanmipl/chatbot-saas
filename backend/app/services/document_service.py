@@ -16,39 +16,63 @@ from app.core.config import settings
 
 
 ALLOWED_TYPES = {
-    "application/pdf":                                             "pdf",
+    "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-    "text/plain":                                                  "txt",
+    "text/plain": "txt",
 }
 
 UPLOAD_DIR = Path(settings.UPLOAD_DIR)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+def chunk_text(text: str, chunk_size: int = 300, overlap: int = 80) -> list[str]:
     """
-    Split text into overlapping chunks.
-    overlap=50 means each chunk shares 50 chars with the next —
-    prevents cutting a sentence mid-thought at chunk boundaries.
+    Improved chunking:
+    - Smaller chunks (300 vs 500) = more precise retrieval
+    - Higher overlap (80 vs 50) = less info lost at boundaries
+    - Sentence-aware splitting = no mid-sentence cuts
     """
+    import re
+
+    # Clean up whitespace
+    text = re.sub(r"\n{3,}", "\n\n", text.strip())
+
+    # Try to split on sentence boundaries first
+    sentences = re.split(r"(?<=[.!?])\s+", text)
     chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end].strip())
-        start += chunk_size - overlap
-    return [c for c in chunks if len(c) > 20]  # skip tiny chunks
+    current = ""
+
+    for sentence in sentences:
+        if len(current) + len(sentence) <= chunk_size:
+            current += " " + sentence
+        else:
+            if current.strip():
+                chunks.append(current.strip())
+            # Start new chunk WITH overlap from end of previous chunk
+            if current:
+                overlap_text = current[-overlap:] if len(current) > overlap else current
+                current = overlap_text + " " + sentence
+            else:
+                current = sentence
+
+    if current.strip():
+        chunks.append(current.strip())
+
+    # Filter out tiny chunks that carry no meaning
+    return [c for c in chunks if len(c.split()) > 8]  # skip tiny chunks
 
 
 def extract_text(file_path: Path, file_type: str) -> str:
     """Extract plain text from PDF, DOCX or TXT files."""
     if file_type == "pdf":
         from pypdf import PdfReader
+
         reader = PdfReader(str(file_path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
 
     elif file_type == "docx":
         from docx import Document as DocxDocument
+
         doc = DocxDocument(str(file_path))
         return "\n".join(p.text for p in doc.paragraphs)
 
@@ -68,7 +92,9 @@ async def upload_document(
 
     # Validate file type
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail="Only PDF, DOCX, and TXT files are supported")
+        raise HTTPException(
+            status_code=400, detail="Only PDF, DOCX, and TXT files are supported"
+        )
 
     file_type = ALLOWED_TYPES[file.content_type]
 
@@ -81,7 +107,7 @@ async def upload_document(
         raise HTTPException(status_code=404, detail="Chatbot not found")
 
     # Save file to disk
-    file_id   = str(uuid.uuid4())
+    file_id = str(uuid.uuid4())
     save_path = UPLOAD_DIR / f"{file_id}_{file.filename}"
 
     async with aiofiles.open(save_path, "wb") as f:
@@ -126,11 +152,11 @@ async def upload_document(
             )
             db.add(chunk)
 
-        document.status      = DocumentStatus.READY
+        document.status = DocumentStatus.READY
         document.chunk_count = len(chunks)
 
     except Exception as e:
-        document.status    = DocumentStatus.FAILED
+        document.status = DocumentStatus.FAILED
         document.error_msg = str(e)
 
     await db.commit()
