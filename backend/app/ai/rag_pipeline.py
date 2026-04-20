@@ -121,12 +121,12 @@ async def retrieve_relevant_chunks(
             filename,
             chunk_index,
             embedding::text,
-            ts_rank(content_tsv, websearch_to_tsquery('simple', :query)) AS similarity,
+            ts_rank(content_tsv, plainto_tsquery('english', :query)) AS similarity,
             'keyword' AS source
         FROM document_chunks
         WHERE chatbot_id  = CAST(:chatbot_id AS uuid)
           AND tenant_id   = CAST(:tenant_id  AS uuid)
-          AND content_tsv @@ websearch_to_tsquery('simple', :query)
+          AND content_tsv @@ plainto_tsquery('english', :query)
         ORDER BY similarity DESC
         LIMIT :top_k
     """)
@@ -161,58 +161,41 @@ async def retrieve_relevant_chunks(
     print(f"  Vector hits: {len(vector_rows_query) + len(vector_rows_hyde)} | Keyword hits: {len(keyword_rows)}")
 
     # ── Step 4: Merge + deduplicate ───────────────────────────────
-    seen = {}
-    merged = []
+    seen   = {}
 
-    def add_result(r, weight):
-        key = (r.filename, r.chunk_index)
+    def add_result(r, source_label: str):
+        key     = (r.filename, r.chunk_index)
+        raw_sim = float(r.similarity)
 
-        emb = json.loads(r.embedding) if r.embedding else []
-
-        score = float(r.similarity) * weight
-
-        query_lower = query.lower()
-        content_lower = r.content.lower()
-
-        # Boost if full query appears
-        if query_lower in content_lower:
-            score *= 2.0
-
-        # Boost if most keywords appear
-        query_terms = query_lower.split()
-        match_count = sum(1 for term in query_terms if term in content_lower)
-
-        if match_count >= max(2, len(query_terms) // 2):
-            score *= 1.3
+        try:
+            emb = json.loads(r.embedding) if r.embedding else []
+        except Exception:
+            emb = []
 
         if key in seen:
-            seen[key]["similarity"] += score
-            seen[key]["source"] += f"+{r.source}"
+            # Keep highest similarity, just tag the source
+            if raw_sim > seen[key]["similarity"]:
+                seen[key]["similarity"] = raw_sim
+            seen[key]["source"] += f"+{source_label}"
         else:
             seen[key] = {
-                "content": r.content,
-                "filename": r.filename,
-                "similarity": score,
-                "embedding": emb,
-                "source": r.source,
+                "content":    r.content,
+                "filename":   r.filename,
+                "similarity": raw_sim,   # ← raw score, no weighting
+                "embedding":  emb,
+                "source":     source_label,
             }
 
-    # Add query results (HIGH trust)
     for r in vector_rows_query:
-        add_result(r, weight=1.0)
+        add_result(r, "vector")
 
-    # Add HyDE results (LOWER trust)
     for r in vector_rows_hyde:
-        add_result(r, weight=0.4)
+        add_result(r, "hyde")
 
-    # Add keyword results (VERY HIGH trust)
     for r in keyword_rows:
-        add_result(r, weight=1.5)
+        add_result(r, "keyword")
 
-    merged = list(seen.values())
-
-    # Only pre-sort to stabilize (optional)
-    merged = sorted(merged, key=lambda x: x['similarity'], reverse=True)
+    merged = sorted(seen.values(), key=lambda x: x["similarity"], reverse=True)
 
     # ── Step 5: MMR only if we have enough chunks ─────────────────
     if len(merged) >= 3:
@@ -252,12 +235,14 @@ def build_prompt(system_prompt: str, context_chunks: list[dict], question: str) 
         context_chunks.sort(key=lambda x: x['similarity'], reverse=True)
         best_score = context_chunks[0]['similarity']
 
-        if best_score > 0.5:
+        if best_score > 0.15:
             confidence = "high"
-        elif best_score > 0.25:
+        elif best_score > 0.02:      # ← was 0.25, way too high
             confidence = "medium"
-        else:
+        elif best_score > -0.05:     # ← slightly negative is still usable
             confidence = "low"
+        else:
+            confidence = "none"
 
         context_text = "\n\n---\n\n".join([
             f"[Source: {c['filename']} | Match: {round(c['similarity']*100)}% | via {c['source']}]\n{c['content']}"
@@ -270,9 +255,9 @@ def build_prompt(system_prompt: str, context_chunks: list[dict], question: str) 
 Say: "I don't have any documents to answer this question." """
 
     elif confidence == "low":
-        instruction = """These chunks have low similarity to the question.
-Answer ONLY if the context clearly and directly addresses the question.
-Otherwise say: "I don't have enough relevant information in the provided documents." """
+        instruction = """The retrieved content is not relevant enough to answer the question.
+Do NOT attempt to answer.
+Respond EXACTLY: "I don't have enough relevant information in the provided documents." """
 
     elif confidence == "medium":
         instruction = """Answer from the context below. 

@@ -14,12 +14,31 @@ embeddings_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
+import numpy as np
+
+def normalize_embedding(embedding: list[float]) -> list[float]:
+    vec  = np.array(embedding, dtype=np.float32)
+    norm = np.linalg.norm(vec)
+    if norm == 0:
+        return embedding
+    return (vec / norm).tolist()
+
 
 async def embed_text(text: str) -> list[float]:
-    """Convert a string into a vector of numbers."""
-    return embeddings_model.embed_query(text)
+    raw = embeddings_model.embed_query(text)
+    return normalize_embedding(raw)
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Convert multiple strings into vectors (batched for efficiency)."""
-    return embeddings_model.embed_documents(texts)
+    raw = embeddings_model.embed_documents(texts)
+    return [normalize_embedding(e) for e in raw]
+
+
+# async def embed_text(text: str) -> list[float]:
+#     """Convert a string into a vector of numbers."""
+#     return embeddings_model.embed_query(text)
+
+
+# async def embed_texts(texts: list[str]) -> list[list[float]]:
+#     """Convert multiple strings into vectors (batched for efficiency)."""
+#     return embeddings_model.embed_documents(texts)

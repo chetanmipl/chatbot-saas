@@ -16,6 +16,7 @@ class DocumentChunk(Base, UUIDMixin, TimestampMixin):
     content = Column(Text, nullable=False)  # the actual text
     chunk_index = Column(Integer, nullable=False)  # position in original doc
     filename = Column(String(500), nullable=False)  # for showing source in UI
+    section = Column(String(500), nullable=True)
 
     # The vector embedding — 768 dimensions for nomic-embed-text
     # embedding   = Column(Vector(768), nullable=True)
