@@ -9,10 +9,15 @@ from app.core.config import settings
 # )
 
 # Alternative: HuggingFace embeddings (requires: pip install langchain-huggingface)
-from langchain_huggingface import HuggingFaceEmbeddings
-embeddings_model = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+# from langchain_huggingface import HuggingFaceEmbeddings
+# embeddings_model = HuggingFaceEmbeddings(
+#     model_name="sentence-transformers/all-MiniLM-L6-v2"
+# )
+
+
+from sentence_transformers import SentenceTransformer
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+embeddings_model=SentenceTransformer("BAAI/bge-base-en")
 
 import numpy as np
 
@@ -23,15 +28,31 @@ def normalize_embedding(embedding: list[float]) -> list[float]:
         return embedding
     return (vec / norm).tolist()
 
+#used with huggingface
+# async def embed_text(text: str) -> list[float]:
+#     raw = embeddings_model.embed_query(text)
+#     return normalize_embedding(raw)
 
-async def embed_text(text: str) -> list[float]:
-    raw = embeddings_model.embed_query(text)
-    return normalize_embedding(raw)
+# async def embed_texts(texts: list[str]) -> list[list[float]]:
+#     raw = embeddings_model.embed_documents(texts)
+#     return [normalize_embedding(e) for e in raw]
+
+async def embed_text(text: str, is_query: bool = True) -> list[float]:
+    """
+    BGE requires a prefix on QUERIES but NOT on documents.
+    is_query=True  → searching (add prefix)
+    is_query=False → storing document chunks (no prefix)
+    """
+    if is_query:
+        text = BGE_QUERY_PREFIX + text
+    raw = embeddings_model.encode(text, normalize_embeddings=True).tolist()
+    return raw
 
 
-async def embed_texts(texts: list[str]) -> list[list[float]]:
-    raw = embeddings_model.embed_documents(texts)
-    return [normalize_embedding(e) for e in raw]
+async def embed_texts(texts: list[str], is_query: bool = False) -> list[list[float]]:
+    """For document chunks — no prefix."""
+    raw = embeddings_model.encode(texts, normalize_embeddings=True).tolist()
+    return raw
 
 
 # async def embed_text(text: str) -> list[float]:

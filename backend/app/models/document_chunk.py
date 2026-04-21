@@ -1,8 +1,10 @@
 # backend/app/models/document_chunk.py
 from sqlalchemy import Column, String, Integer, Text, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, TSVECTOR
+from sqlalchemy.sql import text
 from pgvector.sqlalchemy import Vector
 from app.db.base import Base, TimestampMixin, UUIDMixin
+
 
 
 class DocumentChunk(Base, UUIDMixin, TimestampMixin):
@@ -14,6 +16,11 @@ class DocumentChunk(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "document_chunks"
 
     content = Column(Text, nullable=False)  # the actual text
+#     content_tsv = Column(
+#     TSVECTOR,
+#     nullable=True,
+#     server_default=text("to_tsvector('english', content)")
+# )
     chunk_index = Column(Integer, nullable=False)  # position in original doc
     filename = Column(String(500), nullable=False)  # for showing source in UI
     section = Column(String(500), nullable=True)
@@ -21,7 +28,10 @@ class DocumentChunk(Base, UUIDMixin, TimestampMixin):
     # The vector embedding — 768 dimensions for nomic-embed-text
     # embedding   = Column(Vector(768), nullable=True)
     # The vector embedding — 384 dimensions for hugging-face sentence-transformers/all-MiniLM-L6-v2
-    embedding = Column(Vector(384), nullable=True)
+    # embedding = Column(Vector(384), nullable=True)
+
+    # bge model
+    embedding = Column(Vector(768), nullable=True)
 
     # Foreign keys for isolation
     document_id = Column(

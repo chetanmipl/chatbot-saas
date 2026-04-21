@@ -10,6 +10,7 @@ from app.models.document import Document
 from typing import AsyncGenerator
 import json
 from langchain_groq import ChatGroq
+from app.ai.domain_concepts import get_domain_hints, get_domain_examples, DOMAIN_CONCEPTS
 
 
 # The LLM — runs locally via Ollama
@@ -50,7 +51,8 @@ async def retrieve_relevant_chunks(
     chatbot_id: str,
     tenant_id: str,
     db: AsyncSession,
-    top_k: int = 8
+    top_k: int = 8,
+    domain: str = "general",
 ) -> list[dict]:
 
     # ── Step 1: HyDE — embed hypothetical answer, not raw query ──
@@ -67,11 +69,25 @@ async def retrieve_relevant_chunks(
     # embedding_str = "[" + ",".join(str(x) for x in combined_emb) + "]"
 
     # ── Step 1A: Query Variations Embedding ─────────────────────
-    queries = await generate_query_variations(query)
-    print(f"  Query variations: {queries}")
+    # queries = await generate_query_variations(query)
+    # print(f"  Query variations: {queries}")
 
-    query_embeddings = await embed_texts(queries)
-    query_combined_emb = np.mean(query_embeddings, axis=0).tolist()
+    # query_embeddings = await embed_texts(queries)
+    # query_combined_emb = np.mean(query_embeddings, axis=0).tolist()
+    # query_embedding_str = "[" + ",".join(str(x) for x in query_combined_emb) + "]"
+
+    # ── Step 1A: Concept expansion + query variations ────────────
+    concepts   = await expand_query_concepts(query, domain=domain)
+    variations = await generate_query_variations(query)
+
+    # Deduplicated master list
+    all_queries = list(dict.fromkeys([query] + concepts + variations))
+    print(f"  📝 [{domain}] Searching with {len(all_queries)} variants: {all_queries[:4]}...")
+
+    all_embeddings     = await embed_texts(all_queries, is_query=True)
+    combined           = np.mean(all_embeddings, axis=0)
+    norm               = np.linalg.norm(combined)
+    query_combined_emb = (combined / norm if norm > 0 else combined).tolist()
     query_embedding_str = "[" + ",".join(str(x) for x in query_combined_emb) + "]"
 
 
@@ -80,8 +96,8 @@ async def retrieve_relevant_chunks(
 
     if use_hyde:
         hypothetical = await generate_hypothetical_answer(query)
-        print(f"\n💭 HyDE hypothetical: {hypothetical[:150]}...")
-        hyde_embedding = await embed_text(hypothetical)
+        print(f"\n💭 HyDE hypothetical: {hypothetical[:120]}...")
+        hyde_embedding = await embed_text(hypothetical,is_query=True)
         hyde_embedding_str = "[" + ",".join(str(x) for x in hyde_embedding) + "]"
     else:
         hyde_embedding_str = None
@@ -208,6 +224,44 @@ async def retrieve_relevant_chunks(
         print(f"  [{i+1}] sim={round(c['similarity'], 3)} src={c['source']} | {c['content'][:100]}...")
 
     return reranked
+
+async def expand_query_concepts(question: str, domain: str = "general") -> list[str]:
+    """Domain-aware concept expansion."""
+
+    domain_hints    = get_domain_hints(domain)
+    domain_examples = get_domain_examples(domain)
+
+    examples_block = domain_examples if domain_examples else """
+"games"      → ["gaming", "tournament", "competition", "match", "sport", "player"]
+"work"       → ["job", "role", "position", "internship", "company", "organization"]
+"money"      → ["salary", "payment", "cost", "price", "fee", "compensation"]"""
+
+    prompt = [
+        SystemMessage(content=f"""Given a search query, generate specific examples 
+and related terms that could appear in a document answering this question.
+{domain_hints}
+
+Domain-specific examples:
+{examples_block}
+
+Rules:
+- Include BOTH general terms AND specific named examples
+- Think about how this topic appears in REAL documents
+- Output ONLY a JSON array of strings, nothing else"""),
+        HumanMessage(content=question)
+    ]
+
+    response = await llm.ainvoke(prompt)
+    try:
+        import json as _json
+        raw      = response.content.strip()
+        raw      = raw[raw.find("["):raw.rfind("]") + 1]
+        concepts = _json.loads(raw)
+        print(f"  🧠 [{domain}] Concepts: {concepts}")
+        return concepts[:8]
+    except Exception:
+        return []
+
 
 STRICT_SYSTEM_TEMPLATE = """You are a strict document assistant. You ONLY answer from the context provided below.
 
@@ -347,15 +401,18 @@ def mmr_rerank(
     return [chunks[i] for i in selected]
 
 
+
+
 async def stream_chat_response(
     question: str,
     chatbot_id: str,
     tenant_id: str,
     system_prompt: str,
+    domain: str, 
     db: AsyncSession,
 ) -> AsyncGenerator[str, None]:
 
-    chunks = await retrieve_relevant_chunks(question, chatbot_id, tenant_id, db)
+    chunks = await retrieve_relevant_chunks(question, chatbot_id, tenant_id, db,domain=domain)
 
     # Log what was retrieved — helps debugging in terminal
     print(f"\n🔍 Retrieved {len(chunks)} chunks for: '{question}'")

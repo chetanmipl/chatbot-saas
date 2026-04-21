@@ -10,6 +10,7 @@ class ChatbotCreate(BaseModel):
     description:   Optional[str] = None
     system_prompt: Optional[str] = None
     widget_config: Optional[dict] = {}
+    domain:        Optional[str] = "general"
 
 
 class ChatbotUpdate(BaseModel):
@@ -18,6 +19,7 @@ class ChatbotUpdate(BaseModel):
     system_prompt: Optional[str] = None
     widget_config: Optional[dict] = None
     is_active:     Optional[bool] = None
+    domain:        Optional[str] = None
 
 
 class ChatbotResponse(BaseModel):
@@ -27,6 +29,7 @@ class ChatbotResponse(BaseModel):
     system_prompt: str
     widget_config: dict
     is_active:     bool
+    domain:        str
     tenant_id:     UUID
     created_at:    datetime
 

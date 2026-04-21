@@ -16,6 +16,7 @@ class Chatbot(Base, UUIDMixin, TimestampMixin):
     name          = Column(String(255), nullable=False)
     description   = Column(Text, nullable=True)
     is_active     = Column(Boolean, default=True, nullable=False)
+    domain = Column(String(100), nullable=True, default="general")
 
     # The system prompt shapes the bot's personality and scope
     system_prompt = Column(Text, default="""You are a helpful assistant. 
