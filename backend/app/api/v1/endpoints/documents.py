@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.core.dependencies import get_current_tenant
 from app.models.tenant import Tenant
 from app.models.document import Document
-from app.services.document_service import upload_document
+from app.services.document_service_ import upload_document
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 

@@ -14,7 +14,9 @@ from app.models.chatbot import Chatbot
 from app.models.tenant import Tenant
 from app.ai.embeddings import embed_texts
 from app.core.config import settings
-
+from app.ai.rag_pipeline import llm
+from langchain_core.messages import HumanMessage, SystemMessage
+import json as _json
 import numpy as np
 
 ALLOWED_TYPES = {
@@ -65,84 +67,162 @@ def extract_text(file_path: Path, file_type: str) -> str:
 # ─────────────────────────────────────────────────────────────
 
 # Patterns that signal a new section in most professional documents
+# SECTION_PATTERNS = [
+#     # Markdown headings
+#     r"^#{1,4}\s+.+",
+
+#     # Legal / Academic
+#     r"^Article\s+\d+",
+#     r"^Section\s+[\d\.]+",
+#     r"^Chapter\s+\d+",
+#     r"^Clause\s+\d+",
+#     r"^Part\s+[IVXivx\d]+",
+#     r"^Schedule\s+\d+",
+#     r"^Appendix\s+[A-Z\d]+",
+
+#     # Business documents
+#     r"^Q:\s+.+",                          # FAQ format
+#     r"^\d+\.\s+[A-Z].{10,}",             # 1. Introduction
+#     r"^\d+\.\d+\s+[A-Z].{5,}",           # 1.1 Overview
+#     r"^[A-Z][a-z]+(\s[A-Z][a-z]+){0,4}:$", # "Refund Policy:" as heading
+
+#     # ALL CAPS headings (common in contracts, manuals)
+#     r"^[A-Z][A-Z\s]{8,}$",
+
+#     # HR / Policy docs
+#     r"^Policy\s*:\s*.+",
+#     r"^Procedure\s*:\s*.+",
+
+#     # Product manuals
+#     r"^Step\s+\d+",
+#     r"^Installation",
+#     r"^Troubleshooting",
+
+#     # Page markers (added during PDF extraction)
+#     r"^\[Page\s+\d+\]",
+# ]
+
+# SECTION_RE = re.compile("|".join(SECTION_PATTERNS), re.MULTILINE)
 SECTION_PATTERNS = [
-    # Markdown headings
+    # Markdown
     r"^#{1,4}\s+.+",
 
     # Legal / Academic
     r"^Article\s+\d+",
-    r"^Section\s+[\d\.]+",
+    r"^Section\s+[\d\.]+\s",      # "Section 2.3 " — note trailing space
     r"^Chapter\s+\d+",
     r"^Clause\s+\d+",
     r"^Part\s+[IVXivx\d]+",
     r"^Schedule\s+\d+",
     r"^Appendix\s+[A-Z\d]+",
 
-    # Business documents
-    r"^Q:\s+.+",                          # FAQ format
-    r"^\d+\.\s+[A-Z].{10,}",             # 1. Introduction
-    r"^\d+\.\d+\s+[A-Z].{5,}",           # 1.1 Overview
-    r"^[A-Z][a-z]+(\s[A-Z][a-z]+){0,4}:$", # "Refund Policy:" as heading
+    # Numbered sections X.X format ONLY — not list items
+    # "3.3 Description" ✅   "1. Do this" ❌
+    r"^\d+\.\d+[\.\d]*\s+[A-Z].{5,}",
 
-    # ALL CAPS headings (common in contracts, manuals)
-    r"^[A-Z][A-Z\s]{8,}$",
+    # Business
+    r"^Q:\s+.+",
+    r"^[A-Z][a-z]+(\s[A-Z][a-z]+){0,4}:$",
 
-    # HR / Policy docs
-    r"^Policy\s*:\s*.+",
-    r"^Procedure\s*:\s*.+",
+    # ALL CAPS (min 3 words to avoid false positives)
+    r"^[A-Z][A-Z\s]{10,}$",
 
-    # Product manuals
-    r"^Step\s+\d+",
-    r"^Installation",
-    r"^Troubleshooting",
-
-    # Page markers (added during PDF extraction)
+    # Page markers from PDF extraction
     r"^\[Page\s+\d+\]",
 ]
 
-SECTION_RE = re.compile("|".join(SECTION_PATTERNS), re.MULTILINE)
+# Lines that look like headings but are actually CONTENT
+# Never split on these — they belong to their parent section
+CONTENT_PATTERNS = [
+    r"^Phase\s+\d+",           # Phase 1: Pre-Event
+    r"^Step\s+\d+\s*:",        # Step 1: Setup
+    r"^Stage\s+\d+",
+    r"^Round\s+\d+",
+    r"^Day\s+\d+",
+    r"^Week\s+\d+",
+    r"^\d+\.\s+[A-Z]",         # "1. Do this" — numbered LIST ITEMS
+]
+
+SECTION_RE  = re.compile("|".join(SECTION_PATTERNS),  re.MULTILINE)
+CONTENT_RE  = re.compile("|".join(CONTENT_PATTERNS),  re.MULTILINE | re.IGNORECASE)
 
 
-def semantic_chunk(text: str, max_chunk_size: int = 600) -> list[dict]:
-    """
-    Split text at natural section boundaries (headings, articles, clauses).
-    Each chunk keeps its section title for context.
-    Returns list of {text, section_title, chunk_type}
-    """
-    lines  = text.split("\n")
-    chunks = []
 
+# def semantic_chunk(text: str, max_chunk_size: int = 600) -> list[dict]:
+#     """
+#     Split text at natural section boundaries (headings, articles, clauses).
+#     Each chunk keeps its section title for context.
+#     Returns list of {text, section_title, chunk_type}
+#     """
+#     lines  = text.split("\n")
+#     chunks = []
+
+#     current_title   = "Introduction"
+#     current_content = []
+
+#     def flush(title: str, content: list[str]) -> list[dict]:
+#         """Save current section, split further if too large."""
+#         full_text = "\n".join(content).strip()
+#         if not full_text:
+#             return []
+
+#         if len(full_text) <= max_chunk_size:
+#             return [{"text": f"{title}\n\n{full_text}", "section": title, "type": "section"}]
+
+#         # Section too large — split into sentence windows
+#         return sentence_window_chunk(full_text, title=title,
+#                                      chunk_size=max_chunk_size, overlap=80)
+
+#     for line in lines:
+#         is_heading = SECTION_RE.match(line.strip())
+
+#         if is_heading and current_content:
+#             # Save previous section
+#             chunks.extend(flush(current_title, current_content))
+#             current_title   = line.strip()
+#             current_content = []
+#         else:
+#             current_content.append(line)
+
+#     # Don't forget last section
+#     chunks.extend(flush(current_title, current_content))
+#     return chunks
+
+def semantic_chunk(text: str, max_chunk_size: int = 800) -> list[dict]:
+    lines           = text.split("\n")
+    chunks          = []
     current_title   = "Introduction"
     current_content = []
 
-    def flush(title: str, content: list[str]) -> list[dict]:
-        """Save current section, split further if too large."""
+    def flush(title, content):
         full_text = "\n".join(content).strip()
         if not full_text:
             return []
-
         if len(full_text) <= max_chunk_size:
-            return [{"text": f"{title}\n\n{full_text}", "section": title, "type": "section"}]
-
-        # Section too large — split into sentence windows
+            return [{"text": f"{title}\n\n{full_text}",
+                     "section": title, "type": "section"}]
         return sentence_window_chunk(full_text, title=title,
-                                     chunk_size=max_chunk_size, overlap=80)
+                                     chunk_size=max_chunk_size, overlap=120)
 
     for line in lines:
-        is_heading = SECTION_RE.match(line.strip())
+        stripped = line.strip()
 
-        if is_heading and current_content:
-            # Save previous section
+        is_content_line = bool(CONTENT_RE.match(stripped))  # check first
+        is_heading      = bool(SECTION_RE.match(stripped)) and not is_content_line
+
+        current_text = "\n".join(current_content).strip()
+        has_content  = len(current_text.split()) >= 15
+
+        if is_heading and has_content:
             chunks.extend(flush(current_title, current_content))
-            current_title   = line.strip()
+            current_title   = stripped
             current_content = []
         else:
+            # content line, list item, sub-heading — stays with parent
             current_content.append(line)
 
-    # Don't forget last section
     chunks.extend(flush(current_title, current_content))
     return chunks
-
 
 # ─────────────────────────────────────────────────────────────
 # TIER 2 — SENTENCE WINDOW CHUNKING
@@ -302,36 +382,162 @@ def detect_document_type(text: str) -> str:
         return "mixed"       # everything else → semantic + sentence window
 
 
-def smart_chunk(text: str) -> list[dict]:
+async def detect_headings_with_llm(text: str) -> list[str]:
     """
-    Automatically picks and applies the best chunking strategy.
-    This is what runs on every document upload.
+    Give LLM a sample of the document, ask it to identify
+    what heading patterns exist. Returns regex patterns
+    specific to THIS document — not hardcoded.
     """
-    doc_type = detect_document_type(text)
-    print(f"  📄 Document type detected: {doc_type}")
 
-    if doc_type == "structured":
-        # Semantic sections → then parent-child for precise retrieval
-        sections = semantic_chunk(text, max_chunk_size=600)
-        chunks   = parent_child_chunk(sections)
 
-    elif doc_type == "dense":
-        # Pure sentence windows with generous overlap
-        chunks = sentence_window_chunk(text, chunk_size=350, overlap=120)
+    # Send first 3000 chars — enough to detect structure
+    sample = text[:3000]
 
-    else:  # mixed
-        # Semantic first, sentence window fallback inside large sections
-        chunks = semantic_chunk(text, max_chunk_size=500)
+    prompt = [
+        SystemMessage(content="""Analyze this document sample and identify ALL heading/section patterns.
 
-    # Final cleanup — remove empty or tiny chunks
-    chunks = [
-        c for c in chunks
-        if len(c["text"].split()) >= 10
+Return a JSON object with:
+{
+  "heading_lines": ["exact line 1", "exact line 2", ...],  // actual heading lines you see
+  "pattern_description": "brief description of heading style"
+}
+
+A heading is any line that:
+- Introduces a new section or topic
+- Is shorter than surrounding content
+- May be numbered (3.3, Phase 1, Article 14)
+- May be bold or ALL CAPS in the original
+
+Output ONLY valid JSON, nothing else."""),
+        HumanMessage(content=f"Document sample:\n\n{sample}")
     ]
 
-    print(f"  ✂️  Created {len(chunks)} chunks using {doc_type} strategy")
+    response = await llm.ainvoke(prompt)
+
+    try:
+        raw  = response.content.strip()
+        raw  = raw[raw.find("{"):raw.rfind("}") + 1]
+        data = _json.loads(raw)
+        heading_lines = data.get("heading_lines", [])
+        print(f"  🤖 LLM detected {len(heading_lines)} heading patterns")
+        return heading_lines
+    except Exception as e:
+        print(f"  ⚠️ LLM heading detection failed: {e} — using fallback")
+        return []
+    
+def llm_guided_chunk(
+    text: str,
+    heading_lines: list[str],
+    max_chunk_size: int = 800
+) -> list[dict]:
+    """
+    Split document using headings the LLM identified.
+    Works for ANY document type — no patterns needed.
+    """
+    if not heading_lines:
+        return sentence_window_chunk(text, chunk_size=max_chunk_size)
+
+    lines   = text.split("\n")
+    chunks  = []
+    current_title   = "Introduction"
+    current_content = []
+
+    # Build a lookup set of heading lines for fast matching
+    heading_set = set(h.strip().lower() for h in heading_lines)
+
+    def flush(title, content):
+        full_text = "\n".join(content).strip()
+        if not full_text or len(full_text.split()) < 10:
+            return []
+        if len(full_text) <= max_chunk_size:
+            return [{"text": f"{title}\n\n{full_text}",
+                     "section": title, "type": "llm_guided"}]
+        return sentence_window_chunk(full_text, title=title,
+                                     chunk_size=max_chunk_size, overlap=120)
+
+    for line in lines:
+        stripped  = line.strip()
+        is_heading = stripped.lower() in heading_set
+
+        # Also check partial match for long headings
+        if not is_heading and stripped:
+            is_heading = any(
+                stripped.lower().startswith(h[:30].lower())
+                for h in heading_set if len(h) > 10
+            )
+
+        current_text = "\n".join(current_content).strip()
+        has_content  = len(current_text.split()) >= 15
+
+        if is_heading and has_content:
+            chunks.extend(flush(current_title, current_content))
+            current_title   = stripped
+            current_content = []
+        else:
+            current_content.append(line)
+
+    chunks.extend(flush(current_title, current_content))
     return chunks
 
+# def smart_chunk(text: str) -> list[dict]:
+#     """
+#     Automatically picks and applies the best chunking strategy.
+#     This is what runs on every document upload.
+#     """
+#     doc_type = detect_document_type(text)
+#     print(f"  📄 Document type detected: {doc_type}")
+
+#     if doc_type == "structured":
+#         # Semantic sections → then parent-child for precise retrieval
+#         sections = semantic_chunk(text, max_chunk_size=600)
+#         chunks   = parent_child_chunk(sections)
+
+#     elif doc_type == "dense":
+#         # Pure sentence windows with generous overlap
+#         chunks = sentence_window_chunk(text, chunk_size=350, overlap=120)
+
+#     else:  # mixed
+#         # Semantic first, sentence window fallback inside large sections
+#         chunks = semantic_chunk(text, max_chunk_size=500)
+
+#     # Final cleanup — remove empty or tiny chunks
+#     chunks = [
+#         c for c in chunks
+#         if len(c["text"].split()) >= 10
+#     ]
+
+#     print(f"  ✂️  Created {len(chunks)} chunks using {doc_type} strategy")
+#     return chunks
+async def smart_chunk(text: str) -> list[dict]:
+    doc_type = detect_document_type(text)
+
+    if doc_type == "dense":
+        # No headings expected — sentence window directly
+        return sentence_window_chunk(text, chunk_size=400, overlap=120)
+
+    # Try regex first — fast, private, free
+    chunks = semantic_chunk(text, max_chunk_size=800)
+
+    # ── Quality check ─────────────────────────────────────────
+    avg_chunk_words = sum(len(c["text"].split()) for c in chunks) / max(len(chunks), 1)
+    too_many_chunks = len(chunks) > 80       # over-split
+    too_few_chunks  = len(chunks) < 3        # under-split
+    chunks_too_tiny = avg_chunk_words < 20   # heading-only chunks
+
+    needs_llm = too_many_chunks or too_few_chunks or chunks_too_tiny
+
+    if needs_llm:
+        # Only now use LLM — something went wrong with regex
+        print(f"  ⚠️  Regex chunking poor quality "
+              f"({len(chunks)} chunks, avg {avg_chunk_words:.0f} words) "
+              f"→ falling back to LLM detection")
+        heading_lines = await detect_headings_with_llm(text)
+        if heading_lines:
+            chunks = llm_guided_chunk(text, heading_lines, max_chunk_size=800)
+
+    chunks = [c for c in chunks if len(c["text"].split()) >= 10]
+    print(f"  ✂️  {len(chunks)} chunks, avg {avg_chunk_words:.0f} words/chunk")
+    return chunks
 
 def normalize_embedding(embedding: list[float]) -> list[float]:
     """Normalize to unit vector so cosine similarity works correctly."""
@@ -394,7 +600,7 @@ async def upload_document(
         raw_text = clean_text(raw_text) 
 
         # Smart chunk
-        chunks = smart_chunk(raw_text)
+        chunks = await smart_chunk(raw_text)
 
         # Embed — use parent_text if available (child chunking), else text
         texts_to_embed = [
