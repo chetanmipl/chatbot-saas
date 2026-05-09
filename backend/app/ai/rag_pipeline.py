@@ -263,73 +263,133 @@ Rules:
         return []
 
 
-STRICT_SYSTEM_TEMPLATE = """You are a strict document assistant. You ONLY answer from the context provided below.
+STRICT_SYSTEM_TEMPLATE = """You are a helpful assistant for {bot_name}.
+Answer questions naturally and conversationally, as if you simply know this information.
 
-RULES (never break these):
-- If the answer is in the context → answer clearly and cite the source filename
-- If the answer is NOT in the context → respond EXACTLY: "I don't have information about that in the provided documents."
-- NEVER use outside knowledge, assumptions, or training data
-- NEVER say things like "Generally speaking..." or "Typically..."
-- If context is partially relevant → use only the relevant parts, ignore the rest
+RULES:
+- Answer only from the provided information
+- Never say "according to the context", "based on the provided documents", 
+  "the context mentions", "as per the document" — just answer directly
+- If information is not available → say "I don't have that information"
+- Be concise and helpful
+- Cite the source filename only when specifically asked
 
-CONTEXT:
-{context}
----
-Answer the user's question using ONLY the above context."""
+INFORMATION:
+{context}"""
 
 
-def build_prompt(system_prompt: str, context_chunks: list[dict], question: str) -> list:
+# def build_prompt(system_prompt: str, context_chunks: list[dict], question: str , bot_name:str="this service") -> list:
     
+#     if not context_chunks:
+#         # Truly no chunks at all
+#         context_text = "NO DOCUMENTS AVAILABLE."
+#         confidence   = "none"
+#     else:
+#         # Sort by similarity
+#         context_chunks.sort(key=lambda x: x['similarity'], reverse=True)
+#         best_score = context_chunks[0]['similarity']
+
+#         if best_score > 0.15:
+#             confidence = "high"
+#         elif best_score > 0.02:      # ← was 0.25, way too high
+#             confidence = "medium"
+#         elif best_score > -0.05:     # ← slightly negative is still usable
+#             confidence = "low"
+#         else:
+#             confidence = "none"
+
+#         context_text = "\n\n---\n\n".join([
+#             f"[Source: {c['filename']} | Match: {round(c['similarity']*100)}% | via {c['source']}]\n{c['content']}"
+#             for c in context_chunks
+#         ])
+
+#     # Dynamically adjust strictness based on confidence
+#     if confidence == "none":
+#         instruction = """No documents were found. 
+# Say: "I don't have any documents to answer this question." """
+
+#     elif confidence == "low":
+#         instruction = """The retrieved content is not relevant enough to answer the question.
+# Do NOT attempt to answer.
+# Respond EXACTLY: "I don't have enough relevant information in the provided documents." """
+
+#     elif confidence == "medium":
+#         instruction = """Answer from the context below. 
+# If the context partially answers the question, share what is available and note the limitation.
+# Do NOT invent information not present."""
+
+#     else:  # high confidence
+#         instruction = """Answer directly and thoroughly from the context below.
+# Cite the source filename when possible."""
+
+#     final_system = f"""{system_prompt}
+
+# {instruction}
+
+# CONTEXT:
+# {context_text}
+# ---
+# IMPORTANT: Never use knowledge outside this context. Stick strictly to what is written above."""
+
+#     return [
+#         SystemMessage(content=final_system),
+#         HumanMessage(content=question),
+#     ]
+def build_prompt(
+    system_prompt: str,
+    context_chunks: list[dict],
+    question: str,
+    bot_name: str = "this service",   # ← pass chatbot name for personality
+) -> list:
+
     if not context_chunks:
-        # Truly no chunks at all
-        context_text = "NO DOCUMENTS AVAILABLE."
+        context_text = ""
         confidence   = "none"
     else:
-        # Sort by similarity
         context_chunks.sort(key=lambda x: x['similarity'], reverse=True)
         best_score = context_chunks[0]['similarity']
 
-        if best_score > 0.15:
+        if best_score > 0.20:
             confidence = "high"
-        elif best_score > 0.02:      # ← was 0.25, way too high
+        elif best_score > 0.08:
             confidence = "medium"
-        elif best_score > -0.05:     # ← slightly negative is still usable
+        elif best_score > 0.03:
             confidence = "low"
         else:
             confidence = "none"
 
         context_text = "\n\n---\n\n".join([
-            f"[Source: {c['filename']} | Match: {round(c['similarity']*100)}% | via {c['source']}]\n{c['content']}"
+            f"[{c['filename']}]\n{c['content']}"
             for c in context_chunks
         ])
 
-    # Dynamically adjust strictness based on confidence
     if confidence == "none":
-        instruction = """No documents were found. 
-Say: "I don't have any documents to answer this question." """
+        final_system = f"""{system_prompt}
+
+You don't have relevant information to answer this question.
+Respond: "I don't have information about that. Try rephrasing your question."
+Never make up information."""
 
     elif confidence == "low":
-        instruction = """The retrieved content is not relevant enough to answer the question.
-Do NOT attempt to answer.
-Respond EXACTLY: "I don't have enough relevant information in the provided documents." """
+        final_system = f"""{system_prompt}
+
+Answer based on the information below. If it only partially answers the question,
+share what you know and mention what's missing — without saying "the context says".
+
+INFORMATION:
+{context_text}"""
 
     elif confidence == "medium":
-        instruction = """Answer from the context below. 
-If the context partially answers the question, share what is available and note the limitation.
-Do NOT invent information not present."""
+        final_system = STRICT_SYSTEM_TEMPLATE.format(
+            bot_name=bot_name,
+            context=context_text
+        )
 
-    else:  # high confidence
-        instruction = """Answer directly and thoroughly from the context below.
-Cite the source filename when possible."""
-
-    final_system = f"""{system_prompt}
-
-{instruction}
-
-CONTEXT:
-{context_text}
----
-IMPORTANT: Never use knowledge outside this context. Stick strictly to what is written above."""
+    else:  # high
+        final_system = STRICT_SYSTEM_TEMPLATE.format(
+            bot_name=bot_name,
+            context=context_text
+        )
 
     return [
         SystemMessage(content=final_system),
@@ -403,25 +463,41 @@ def mmr_rerank(
 
 
 
+# async def stream_chat_response(
+#     question: str,
+#     chatbot_id: str,
+#     tenant_id: str,
+#     system_prompt: str,
+#     domain: str, 
+#     db: AsyncSession,
+# ) -> AsyncGenerator[str, None]:
+
+#     chunks = await retrieve_relevant_chunks(question, chatbot_id, tenant_id, db,domain=domain)
+
+#     # Log what was retrieved — helps debugging in terminal
+#     print(f"\n🔍 Retrieved {len(chunks)} chunks for: '{question}'")
+#     for i, c in enumerate(chunks):
+#         print(
+#             f"  [{i+1}] {c['filename']} | sim={round(c['similarity'],3)} | src={c['source']} | {c['content'][:80]}..."
+#         )
+
+#     messages = build_prompt(system_prompt, chunks, question)
+
+#     async for chunk in llm.astream(messages):
+#         if chunk.content:
+#             yield chunk.content
 async def stream_chat_response(
     question: str,
     chatbot_id: str,
     tenant_id: str,
     system_prompt: str,
-    domain: str, 
+    domain: str,
     db: AsyncSession,
+    bot_name: str = "this service",   # ← add
 ) -> AsyncGenerator[str, None]:
 
-    chunks = await retrieve_relevant_chunks(question, chatbot_id, tenant_id, db,domain=domain)
-
-    # Log what was retrieved — helps debugging in terminal
-    print(f"\n🔍 Retrieved {len(chunks)} chunks for: '{question}'")
-    for i, c in enumerate(chunks):
-        print(
-            f"  [{i+1}] {c['filename']} | sim={round(c['similarity'],3)} | src={c['source']} | {c['content'][:80]}..."
-        )
-
-    messages = build_prompt(system_prompt, chunks, question)
+    chunks   = await retrieve_relevant_chunks(question, chatbot_id, tenant_id, db, domain=domain)
+    messages = build_prompt(system_prompt, chunks, question, bot_name=bot_name)  # ← pass
 
     async for chunk in llm.astream(messages):
         if chunk.content:

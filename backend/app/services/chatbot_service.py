@@ -13,11 +13,12 @@ async def create_chatbot(data: ChatbotCreate, tenant: Tenant, db: AsyncSession) 
     chatbot = Chatbot(
         name=data.name,
         description=data.description,
-        system_prompt=data.system_prompt or """You are a helpful assistant. 
-Answer questions based only on the provided documents. 
+        system_prompt=data.system_prompt or """You are a helpful assistant.
+Answer questions based only on the provided documents.
 If you don't know the answer say: 'I don't have information about that.'""",
         widget_config=data.widget_config or {},
         tenant_id=tenant.id,
+        domain=data.domain or "general",   # domain
     )
     db.add(chatbot)
     await db.commit()
@@ -49,13 +50,24 @@ async def get_chatbot(chatbot_id: UUID, tenant: Tenant, db: AsyncSession) -> Cha
     return chatbot
 
 
-async def update_chatbot(chatbot_id: UUID, data: ChatbotUpdate, tenant: Tenant, db: AsyncSession) -> Chatbot:
+async def update_chatbot(
+    chatbot_id: UUID,
+    data: ChatbotUpdate,
+    tenant: Tenant,
+    db: AsyncSession
+) -> Chatbot:
     chatbot = await get_chatbot(chatbot_id, tenant, db)
-    update_data = data.model_dump(exclude_unset=True)  # only update provided fields
+    
+    update_data = data.model_dump(exclude_unset=True)
+    print(f"  📝 Updating chatbot with: {update_data}")  # debug line
+    
     for field, value in update_data.items():
         setattr(chatbot, field, value)
+    
     await db.commit()
     await db.refresh(chatbot)
+    
+    print(f"  ✅ Chatbot domain now: {chatbot.domain}")  # debug line
     return chatbot
 
 

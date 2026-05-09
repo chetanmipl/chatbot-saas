@@ -5,7 +5,17 @@
 import { useEffect, useState } from 'react'
 import { NAV_LINKS } from '../data/content'
 
-export default function Navbar() {
+interface NavbarProps {
+  theme: 'dark' | 'light'
+  toggleTheme: () => void
+}
+
+export default function Navbar({
+  theme,
+  toggleTheme,
+}: NavbarProps) {
+
+  const isDark = theme === 'dark'
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -20,8 +30,8 @@ export default function Navbar() {
       style={{
         position: 'fixed',
         top: 0,
-        left: 0,
-        right: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
         zIndex: 200,
         padding: '0 24px',
         height: 64,
@@ -29,13 +39,29 @@ export default function Navbar() {
         alignItems: 'center',
         justifyContent: 'space-between',
         // Frosted glass effect on scroll
+        width: 'min(1280px, calc(100% - 32px))',
+        margin: '16px auto 0',
+        borderRadius: 9999,
+
         background: scrolled
-          ? 'rgba(12, 10, 9, 0.85)'
-          : 'transparent',
-        backdropFilter: scrolled ? 'blur(20px)' : 'none',
-        borderBottom: scrolled
-          ? '1px solid rgba(41, 37, 36, 0.8)'
-          : '1px solid transparent',
+          ? isDark
+            ? 'rgba(28,25,23,0.72)'
+            : 'rgba(255,247,237,0.72)'
+          : isDark
+            ? 'rgba(28,25,23,0.35)'
+            : 'rgba(255,255,255,0.35)',
+
+        backdropFilter: 'blur(24px)',
+
+        border: isDark
+          ? '1px solid rgba(255,255,255,0.06)'
+          : '1px solid rgba(0,0,0,0.06)',
+
+        boxShadow: scrolled
+          ? isDark
+            ? '0 10px 40px rgba(0,0,0,0.35)'
+            : '0 10px 40px rgba(0,0,0,0.08)'
+          : 'none',
         transition: 'all 0.3s ease',
       }}
     >
@@ -70,7 +96,7 @@ export default function Navbar() {
             fontFamily: 'Nunito, sans-serif',
             fontWeight: 800,
             fontSize: 20,
-            color: '#fff7ed',
+            color: isDark ? '#fff7ed' : '#1c1917',
             letterSpacing: '-0.3px',
           }}
         >
@@ -83,7 +109,7 @@ export default function Navbar() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 32,
+          gap: 'clamp(20px, 2vw, 48px)',
         }}
         className="nav-links-desktop"
       >
@@ -92,7 +118,7 @@ export default function Navbar() {
             key={link.label}
             href={link.href}
             style={{
-              color: '#a8826a',
+              color: isDark ? '#a8826a' : '#57534e',
               fontSize: 14,
               fontWeight: 500,
               textDecoration: 'none',
@@ -113,10 +139,30 @@ export default function Navbar() {
 
       {/* Right side — CTA buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          onClick={() => toggleTheme()}
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: '50%',
+            border: 'none',
+            cursor: 'pointer',
+
+            background: isDark
+              ? 'rgba(255,255,255,0.06)'
+              : 'rgba(0,0,0,0.05)',
+
+            color: isDark ? '#fb923c' : '#ea580c',
+
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
         <a
           href="/login"
           style={{
-            color: '#a8826a',
+            color: isDark ? '#a8826a' : '#57534e',
             fontSize: 14,
             fontWeight: 500,
             textDecoration: 'none',
@@ -136,7 +182,7 @@ export default function Navbar() {
           href="/register"
           style={{
             background: '#ea580c',
-            color: '#fff7ed',
+            color: isDark ? '#fff7ed' : '#1c1917',
             padding: '8px 20px',
             borderRadius: 9999,
             fontSize: 14,
@@ -170,7 +216,7 @@ export default function Navbar() {
             display: 'none',
             background: 'none',
             border: 'none',
-            color: '#fff7ed',
+            color: isDark ? '#fff7ed' : '#1c1917',
             fontSize: 22,
             cursor: 'pointer',
             padding: 4,
@@ -190,7 +236,9 @@ export default function Navbar() {
             top: 64,
             left: 0,
             right: 0,
-            background: 'rgba(12,10,9,0.97)',
+            background: isDark
+            ? 'rgba(12,10,9,0.92)'
+            : 'rgba(255,247,237,0.92)',
             backdropFilter: 'blur(20px)',
             borderBottom: '1px solid #292524',
             padding: '24px',
@@ -206,7 +254,7 @@ export default function Navbar() {
               href={link.href}
               onClick={() => setMobileOpen(false)}
               style={{
-                color: '#fff7ed',
+                color: isDark ? '#fff7ed' : '#1c1917',
                 fontSize: 18,
                 fontWeight: 600,
                 textDecoration: 'none',
@@ -220,7 +268,7 @@ export default function Navbar() {
             href="/register"
             style={{
               background: '#ea580c',
-              color: '#fff7ed',
+              color: isDark ? '#fff7ed' : '#1c1917',
               padding: '12px 24px',
               borderRadius: 9999,
               fontSize: 16,

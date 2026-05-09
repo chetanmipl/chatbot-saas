@@ -3,6 +3,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
+from sqlalchemy import func, select
+from app.models.message import Message
+
 from app.db.session import get_db
 from app.core.dependencies import get_current_user, get_current_tenant
 from app.models.user import User
@@ -39,6 +42,29 @@ async def get_one(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_chatbot(chatbot_id, tenant, db)
+
+@router.get("/{chatbot_id}/stats")
+async def get_stats(
+    chatbot_id: UUID,
+    tenant: Tenant       = Depends(get_current_tenant),
+    db:     AsyncSession = Depends(get_db),
+):
+
+
+    result = await db.execute(
+        select(
+            func.count(Message.id).label("total_messages"),
+            func.sum(Message.tokens_used).label("total_tokens"),
+        ).where(
+            Message.chatbot_id == chatbot_id,
+            Message.tenant_id  == tenant.id,
+        )
+    )
+    row = result.first()
+    return {
+        "total_messages": row.total_messages or 0,
+        "total_tokens":   row.total_tokens   or 0,
+    }
 
 
 @router.patch("/{chatbot_id}", response_model=ChatbotResponse)

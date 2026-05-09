@@ -1,0 +1,158 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:transparent}
+.ds{font-family:'Segoe UI',system-ui,sans-serif;color:#1c1917;padding:0.5rem 0}
+.section{margin-bottom:24px}
+.sec-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#a8a29e;margin-bottom:10px}
+.palette-row{display:flex;gap:6px}
+.swatch-wrap{flex:1}
+.swatch{height:40px;border-radius:8px}
+.hex{font-size:9px;color:#a8a29e;margin-top:3px;font-family:monospace;text-align:center}
+.sw-name{font-size:9px;color:#78716c;text-align:center}
+.type-row{display:flex;flex-direction:column;gap:10px}
+.type-sample{background:#1c1917;border-radius:10px;padding:16px 20px}
+.t-label{font-size:9px;color:#78716c;margin-bottom:4px;font-family:monospace}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.comp-card{background:#1c1917;border-radius:12px;padding:16px;border:1px solid #292524}
+.comp-label{font-size:9px;color:#78716c;margin-bottom:8px;font-family:monospace}
+.btn-primary{background:#ea580c;color:#fff7ed;border:none;border-radius:50px;padding:10px 22px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-secondary{background:transparent;color:#fb923c;border:2px solid #ea580c;border-radius:50px;padding:9px 22px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.feature-card{background:#231a10;border:1px solid #3d2810;border-radius:14px;padding:14px}
+.fc-icon{width:32px;height:32px;border-radius:8px;background:#78350f;display:flex;align-items:center;justify-content:center;margin-bottom:8px;font-size:14px}
+.fc-title{font-size:13px;font-weight:600;color:#fed7aa;margin-bottom:3px}
+.fc-desc{font-size:11px;color:#a8826a;line-height:1.5}
+.nav-mock{background:#0c0a09;border:1px solid #292524;border-radius:10px;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:8px}
+.logo-mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#ea580c,#fb923c);display:flex;align-items:center;justify-content:center}
+.logo-text{font-size:14px;font-weight:700;color:#fff7ed}
+.nav-links{display:flex;gap:20px}
+.nav-link{font-size:12px;color:#a8826a}
+.nav-cta{background:#ea580c;color:#fff;border:none;border-radius:20px;padding:6px 14px;font-size:11px;font-weight:600;cursor:pointer}
+.badge-row{display:flex;gap:8px;flex-wrap:wrap}
+.badge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-warm{background:#431407;color:#fb923c;border:1px solid #7c2d12}
+.badge-stone{background:#1c1917;color:#a8a29e;border:1px solid #3f3835}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat-card{background:#1c1917;border:1px solid #292524;border-radius:10px;padding:12px;text-align:center}
+.stat-num{font-size:20px;font-weight:700;color:#fb923c}
+.stat-lbl{font-size:10px;color:#78716c;margin-top:2px}
+.motion-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.motion-item{background:#1c1917;border-radius:10px;padding:12px;border:1px solid #292524}
+.mi-title{font-size:11px;font-weight:600;color:#fed7aa;margin-bottom:3px}
+.mi-val{font-size:10px;color:#78716c;font-family:monospace}
+</style>
+
+<div class="ds">
+
+<div class="section">
+  <div class="sec-label">Color palette — Warm Cosmos</div>
+  <div class="palette-row">
+    <div class="swatch-wrap"><div class="swatch" style="background:#0c0a09"></div><div class="hex">#0c0a09</div><div class="sw-name">Void</div></div>
+    <div class="swatch-wrap"><div class="swatch" style="background:#1c1917"></div><div class="hex">#1c1917</div><div class="sw-name">Obsidian</div></div>
+    <div class="swatch-wrap"><div class="swatch" style="background:#292524"></div><div class="hex">#292524</div><div class="sw-name">Ash</div></div>
+    <div class="swatch-wrap"><div class="swatch" style="background:#78350f"></div><div class="hex">#78350f</div><div class="sw-name">Ember</div></div>
+    <div class="swatch-wrap"><div class="swatch" style="background:#ea580c"></div><div class="hex">#ea580c</div><div class="sw-name">Flame</div></div>
+    <div class="swatch-wrap"><div class="swatch" style="background:#fb923c"></div><div class="hex">#fb923c</div><div class="sw-name">Glow</div></div>
+    <div class="swatch-wrap"><div class="swatch" style="background:#fdba74"></div><div class="hex">#fdba74</div><div class="sw-name">Peach</div></div>
+    <div class="swatch-wrap"><div class="swatch" style="background:#fff7ed"></div><div class="hex">#fff7ed</div><div class="sw-name">Cream</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="sec-label">Typography system</div>
+  <div class="type-row">
+    <div class="type-sample">
+      <div class="t-label">Display / Hero — Nunito 800 72px</div>
+      <div style="font-size:28px;font-weight:800;color:#fff7ed;line-height:1.1;font-family:'Nunito',system-ui">Your AI, <span style="color:#fb923c">Your Brand</span></div>
+    </div>
+    <div class="type-sample">
+      <div class="t-label">Heading H2 — Nunito 700 40px</div>
+      <div style="font-size:20px;font-weight:700;color:#fed7aa;font-family:'Nunito',system-ui">How it works in 3 steps</div>
+    </div>
+    <div class="type-sample">
+      <div class="t-label">Body — Plus Jakarta Sans 400 16px</div>
+      <div style="font-size:13px;color:#a8826a;line-height:1.7;font-family:system-ui">Train your chatbot on any document. Deploy it anywhere. Your customers get instant answers 24/7 without you lifting a finger.</div>
+    </div>
+    <div class="type-sample">
+      <div class="t-label">Mono accent — for stats, code, labels</div>
+      <div style="font-size:13px;color:#fb923c;font-family:monospace">99.9% uptime · &lt;200ms response · ∞ conversations</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="sec-label">Core components</div>
+  <div class="grid2">
+    <div class="comp-card">
+      <div class="comp-label">Navbar</div>
+      <div class="nav-mock">
+        <div class="nav-logo">
+          <div class="logo-mark"><span style="font-size:14px">✦</span></div>
+          <span class="logo-text">Botify</span>
+        </div>
+        <div class="nav-links">
+          <span class="nav-link">Features</span>
+          <span class="nav-link">Pricing</span>
+          <span class="nav-link">Docs</span>
+        </div>
+        <button class="nav-cta">Get started</button>
+      </div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-label">CTA buttons</div>
+      <div style="display:flex;flex-direction:column;gap:10px;padding-top:4px">
+        <button class="btn-primary">Start building free →</button>
+        <button class="btn-secondary">Watch demo</button>
+      </div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-label">Feature card</div>
+      <div class="feature-card">
+        <div class="fc-icon">📄</div>
+        <div class="fc-title">Any document type</div>
+        <div class="fc-desc">Upload PDFs, Word docs, or plain text. We handle the rest automatically.</div>
+      </div>
+    </div>
+    <div class="comp-card">
+      <div class="comp-label">Badges + tags</div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding-top:4px">
+        <div class="badge-row">
+          <span class="badge badge-warm">New ✦</span>
+          <span class="badge badge-warm">RAG powered</span>
+          <span class="badge badge-stone">Free plan</span>
+        </div>
+        <div class="badge-row">
+          <span class="badge badge-stone">PDF</span>
+          <span class="badge badge-stone">DOCX</span>
+          <span class="badge badge-stone">TXT</span>
+          <span class="badge badge-warm">+ more</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="sec-label">Stats bar</div>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-num">500+</div><div class="stat-lbl">Businesses trained</div></div>
+    <div class="stat-card"><div class="stat-num">2M+</div><div class="stat-lbl">Questions answered</div></div>
+    <div class="stat-card"><div class="stat-num">&lt;1s</div><div class="stat-lbl">Response time</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="sec-label">Animation tokens</div>
+  <div class="motion-row">
+    <div class="motion-item"><div class="mi-title">Floating orbs</div><div class="mi-val">duration: 4s · ease: sine · y: ±16px</div></div>
+    <div class="motion-item"><div class="mi-title">Card hover lift</div><div class="mi-val">translateY: -6px · scale: 1.01 · 200ms</div></div>
+    <div class="motion-item"><div class="mi-title">Text reveal</div><div class="mi-val">opacity 0→1 · y 24→0 · stagger 100ms</div></div>
+    <div class="motion-item"><div class="mi-title">AI face blink</div><div class="mi-val">scaleY 1→0.08→1 · every 3.5s · 120ms</div></div>
+    <div class="motion-item"><div class="mi-title">Glow pulse</div><div class="mi-val">opacity .4→.9 · 2s · ease in-out alt</div></div>
+    <div class="motion-item"><div class="mi-title">Scroll trigger</div><div class="mi-val">threshold: 0.15 · once: true · GSAP</div></div>
+  </div>
+</div>
+
+</div>

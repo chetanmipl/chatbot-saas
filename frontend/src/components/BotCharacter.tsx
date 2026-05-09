@@ -1,94 +1,80 @@
 // ============================================================
-// BotCharacter — Clean redesign
-// ORBACK: Energy orb (tight fresnel, fits sphere exactly)
-// BOTFACE: Simple cute face matching Spline design
-//          (circle head + warm ellipse eyes)
-// FLIP: GSAP scroll scrub drives rotateY 0→180
-//       Scroll down = flip to face
-//       Scroll up = flip back to orb
+// BotCharacter — v3
+// ORB:  Proper 3D sphere with specular highlight, subsurface
+//       scatter, animated fresnel energy bands
+// FACE: Image 2 reference — pill eyes, glassy sphere, soft
+// THEME: dark / light prop
+// FLOAT: Drop shadow underneath for heavy-object feel
 // ============================================================
 
-import { useEffect, useRef, forwardRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCursor } from '../hooks/useCursor'
 
+type Theme = 'dark' | 'light'
+
 interface BotCharacterProps {
-  scrollProgress: number   // 0→1 driven by parent GSAP scrub
+  scrollProgress: number
   size?: number
+  theme?: Theme
 }
 
-export default function BotCharacter({
-  scrollProgress,
-  size = 480,
-}: BotCharacterProps) {
+export default function BotCharacter({ scrollProgress, size = 480, theme = 'dark' }: BotCharacterProps) {
   const cursor = useCursor()
-  const cardRef = useRef<HTMLDivElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
 
-  // Flip angle: 0 = orb, 180 = face
-  // Only flips during scroll 0.25→0.65
-  const flipProgress = Math.max(0, Math.min(1,
-    (scrollProgress - 0.25) / 0.4
-  ))
-  const rotateY = flipProgress * 180
+  const flipT   = Math.max(0, Math.min(1, (scrollProgress - 0.25) / 0.4))
+  const rotateY = flipT * 180
+  const tiltX =  cursor.y * 5   // much less body tilt
+  const tiltY = -cursor.x * 5
+  const isDark  = theme === 'dark'
 
-  // Subtle cursor tilt on top of flip
-  const tiltX = cursor.y * 7
-  const tiltY = -cursor.x * 7
+  // Show face when more than halfway through flip
+  const showFace = rotateY > 90
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: size,
-        height: size,
-        maxWidth: '88vw',
-        maxHeight: '88vw',
-        position: 'relative',
-        perspective: '1100px',
-      }}
-    >
-      {/* Ambient glow — stays behind whole thing */}
+    <div style={{
+      width: size, height: size,
+      maxWidth: '88vw', maxHeight: '88vw',
+      position: 'relative',
+      perspective: '1200px',
+      filter: 'drop-shadow(0 40px 60px rgba(234,88,12,0.35)) drop-shadow(0 60px 80px rgba(0,0,0,0.5))',
+    }}>
+
+      {/* Ambient glow */}
       <div style={{
-        position: 'absolute',
-        inset: '-18%',
-        borderRadius: '50%',
-        background: 'radial-gradient(ellipse, rgba(120,53,15,0.38) 0%, rgba(234,88,12,0.1) 55%, transparent 75%)',
+        position: 'absolute', inset: '-15%', borderRadius: '50%',
+        background: 'radial-gradient(ellipse, rgba(120,53,15,0.32) 0%, rgba(234,88,12,0.08) 55%, transparent 72%)',
         animation: 'pulse-glow 4s ease-in-out infinite',
         pointerEvents: 'none',
-        zIndex: 0,
       }} />
 
-      {/* Flip card */}
-      <div
-        ref={cardRef}
-        style={{
-          width: '100%',
-          height: '100%',
-          position: 'relative',
-          transformStyle: 'preserve-3d',
-          // Combine flip + cursor tilt
-          transform: `rotateX(${tiltX}deg) rotateY(${tiltY + rotateY}deg)`,
-          transition: 'transform 0.08s ease-out',
-          zIndex: 1,
-        }}
-      >
-        {/* BACK: Energy Orb */}
+      {/* Rotating wrapper */}
+      <div style={{
+        width: '100%', height: '100%',
+        position: 'relative',
+        transformStyle: 'preserve-3d',
+        transform: `rotateX(${tiltX}deg) rotateY(${tiltY + rotateY}deg)`,
+        // No transition here to keep scroll syncing perfectly
+      }}>
+
+        {/* BACK: Orb — visible when rotateY 0-90 */}
         <div style={{
           position: 'absolute', inset: 0,
-          backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden',
+          opacity: showFace ? 0 : 1,
+          transition: 'opacity 0.15s ease-out',
+          zIndex: showFace ? 0 : 1,
         }}>
-          <OrbBack size={size} />
+          <EnergyOrb size={size} theme={theme} />
         </div>
 
-        {/* FRONT: Cute bot face */}
+        {/* FRONT: Face — rotated 180° to start */}
         <div style={{
           position: 'absolute', inset: 0,
-          backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden',
           transform: 'rotateY(180deg)',
+          opacity: showFace ? 1 : 0,
+          transition: 'opacity 0.15s ease-out',
+          zIndex: showFace ? 1 : 0,
         }}>
-          <BotFace size={size} cursor={cursor} />
+          <BotFace size={size} cursor={cursor} theme={theme} />
         </div>
       </div>
     </div>
@@ -96,12 +82,13 @@ export default function BotCharacter({
 }
 
 // ─────────────────────────────────────────────────────────────
-// ORB BACK
-// Tight fresnel = thin bright ring exactly at sphere edge
-// Neural lines, rotating rings, orbiting particles inside sphere
+// ENERGY ORB — proper 3D sphere
+// Key: specular highlight + subsurface + animated fresnel bands
 // ─────────────────────────────────────────────────────────────
-function OrbBack({ size }: { size: number }) {
+
+function EnergyOrb({ size, theme }: { size: number; theme: Theme }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const isDark    = theme === 'dark'
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -110,46 +97,36 @@ function OrbBack({ size }: { size: number }) {
     if (!ctx) return
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    canvas.width = size * dpr
+    canvas.width  = size * dpr
     canvas.height = size * dpr
-    canvas.style.width = `${size}px`
+    canvas.style.width  = `${size}px`
     canvas.style.height = `${size}px`
     ctx.scale(dpr, dpr)
 
     const cx = size / 2
     const cy = size / 2
-    const R = size * 0.44   // sphere radius — fills the box well
+    const R  = size * 0.42
 
     let frame = 0
     let animId: number
 
-    // Orbital particles — INSIDE and AROUND the sphere
-    const particles = Array.from({ length: 70 }, (_, i) => ({
-      angle: (i / 70) * Math.PI * 2 + Math.random() * 0.3,
-      speed: 0.004 + Math.random() * 0.006,
-      orbitRx: R * (0.65 + Math.random() * 0.45),
-      orbitRy: R * (0.12 + Math.random() * 0.35),
-      tilt: Math.random() * Math.PI,
-      sz: 1.2 + Math.random() * 2.2,
-      opacity: 0.35 + Math.random() * 0.65,
-      color: ['#ea580c', '#fb923c', '#fdba74', '#c2410c'][Math.floor(Math.random() * 4)],
+    // Floating dust particles — scattered, no orbit path
+    const dustParticles = Array.from({ length: 80 }, () => ({
+      x:    cx + (Math.random() - 0.5) * R * 1.8,
+      y:    cy + (Math.random() - 0.5) * R * 1.8,
+      vx:   (Math.random() - 0.5) * 0.3,
+      vy:   (Math.random() - 0.5) * 0.3,
+      sz:   0.8 + Math.random() * 2.2,
+      op:   0.2 + Math.random() * 0.6,
+      hue:  18 + Math.random() * 22,
     }))
 
-    // 3 rotating rings at different tilts
-    const rings = [
-      { rx: R * 0.88, ry: R * 0.22, rot: 0, speed: 0.009, alpha: 0.45 },
-      { rx: R * 0.82, ry: R * 0.17, rot: Math.PI / 3, speed: -0.007, alpha: 0.32 },
-      { rx: R * 0.76, ry: R * 0.14, rot: Math.PI * 0.7, speed: 0.011, alpha: 0.25 },
-    ]
-
-    // Energy arcs (spark-like)
-    const arcs = Array.from({ length: 10 }, (_, i) => ({
-      a: (i / 10) * Math.PI * 2,
-      len: 0.18 + Math.random() * 0.55,
-      rad: R * (0.78 + Math.random() * 0.18),
-      spd: (0.007 + Math.random() * 0.011) * (Math.random() > 0.5 ? 1 : -1),
-      op: 0.3 + Math.random() * 0.45,
-      w: 0.8 + Math.random() * 1.8,
+    // Fresnel energy bands — sweep across surface
+    const bands = Array.from({ length: 6 }, (_, i) => ({
+      angle: (i / 6) * Math.PI * 2,
+      speed: (0.002 + Math.random() * 0.004) * (Math.random() > 0.5 ? 1 : -1),
+      width: 0.06 + Math.random() * 0.12,
+      bright: 0.25 + Math.random() * 0.4,
     }))
 
     function draw() {
@@ -157,129 +134,168 @@ function OrbBack({ size }: { size: number }) {
       ctx.clearRect(0, 0, size, size)
       frame++
 
-      // ── Clip everything inside sphere ──────────────────
-      ctx.save()
+      // Light source — top left
+      const lx = cx - R * 0.30
+      const ly = cy - R * 0.30
+
+      // ── Sphere base — 3D shading with deeper shadows ────────
+      const baseG = ctx.createRadialGradient(lx, ly, R * 0.05, cx, cy, R)
+      if (isDark) {
+        baseG.addColorStop(0,    'rgba(160,70,20,1)')   // Light center
+        baseG.addColorStop(0.3,  'rgba(90,35,10,1)')
+        baseG.addColorStop(0.6,  'rgba(40,15,5,1)')
+        baseG.addColorStop(0.85, 'rgba(15,8,2,1)')
+        baseG.addColorStop(1,    'rgba(8,5,2,1)')       // Dark edge
+      } else {
+        baseG.addColorStop(0,    '#ffd4a0')
+        baseG.addColorStop(0.4,  '#f0a850')
+        baseG.addColorStop(0.8,  '#d07020')
+        baseG.addColorStop(1,    '#a04810')
+      }
       ctx.beginPath()
       ctx.arc(cx, cy, R, 0, Math.PI * 2)
+      ctx.fillStyle = baseG
+      ctx.fill()
+
+      // ── Subsurface scatter ──────────────────────────────
+      const ssG = ctx.createRadialGradient(cx, cy + R * 0.1, 0, cx, cy, R * 0.8)
+      ssG.addColorStop(0,   'rgba(220,70,5,0.20)')
+      ssG.addColorStop(0.4, 'rgba(180,50,0,0.10)')
+      ssG.addColorStop(1,   'rgba(0,0,0,0)')
+      ctx.beginPath()
+      ctx.arc(cx, cy, R * 0.8, 0, Math.PI * 2)
+      ctx.fillStyle = ssG
+      ctx.fill()
+
+      // ── Clip for surface effects ────────────────────────
+      ctx.save()
+      ctx.beginPath()
+      ctx.arc(cx, cy, R * 0.995, 0, Math.PI * 2)
       ctx.clip()
 
-      // Body gradient — rich dark brown/obsidian
-      const bodyG = ctx.createRadialGradient(
-        cx - R * 0.22, cy - R * 0.22, R * 0.04,
-        cx, cy, R
-      )
-      bodyG.addColorStop(0, 'rgba(92,40,10,1)')
-      bodyG.addColorStop(0.3, 'rgba(44,18,5,1)')
-      bodyG.addColorStop(0.65, 'rgba(22,10,4,1)')
-      bodyG.addColorStop(1, 'rgba(12,10,9,1)')
-      ctx.fillStyle = bodyG
-      ctx.fillRect(0, 0, size, size)
+      // Moving energy bands on surface
+      bands.forEach((band) => {
+        band.angle += band.speed
+        const pulse = 0.5 + 0.5 * Math.sin(frame * 0.035 + band.angle * 2)
+        const a1 = band.angle - band.width
+        const a2 = band.angle + band.width
 
-      // Neural lines (inside sphere)
-      for (let i = 0; i < 9; i++) {
-        const a1 = (i / 9) * Math.PI * 2 + frame * 0.004
-        const a2 = ((i + 3.5) / 9) * Math.PI * 2 + frame * 0.004
-        const x1 = cx + Math.cos(a1) * R * 0.58
-        const y1 = cy + Math.sin(a1) * R * 0.58
-        const x2 = cx + Math.cos(a2) * R * 0.58
-        const y2 = cy + Math.sin(a2) * R * 0.58
-        const pulse = 0.3 + 0.7 * Math.abs(Math.sin(frame * 0.035 + i * 0.7))
+        // Multi-layer band for soft glow
+        ;[0.97, 0.88, 0.78].forEach((r, d) => {
+          const alp = band.bright * pulse * (1 - d * 0.32)
+          ctx.beginPath()
+          ctx.arc(cx, cy, R * r, a1, a2)
+          ctx.strokeStyle = `rgba(251,146,60,${alp})`
+          ctx.lineWidth = 5 - d * 1.2
+          ctx.lineCap = 'round'
+          ctx.stroke()
+        })
+      })
 
+      // Subtle horizontal energy lines
+      for (let i = -10; i <= 10; i++) {
+        const y  = cy + (i / 10) * R * 0.88
+        const hw = Math.sqrt(Math.max(0, R * R - (y - cy) ** 2)) * 0.93
+        if (hw < 2) continue
+        const pulse = 0.2 + 0.8 * Math.abs(Math.sin(frame * 0.02 + i * 0.5))
         ctx.beginPath()
-        ctx.moveTo(x1, y1)
-        ctx.quadraticCurveTo(cx, cy, x2, y2)
-        ctx.strokeStyle = `rgba(251,146,60,${0.12 * pulse})`
-        ctx.lineWidth = 0.8
+        ctx.moveTo(cx - hw, y)
+        ctx.lineTo(cx + hw, y)
+        ctx.strokeStyle = `rgba(251,146,60,${0.04 * pulse})`
+        ctx.lineWidth = 0.6
         ctx.stroke()
-
-        // Node
-        ctx.beginPath()
-        ctx.arc(x1, y1, 2, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(251,146,60,${0.5 * pulse})`
-        ctx.fill()
       }
 
-      // Rotating rings (inside clip)
-      rings.forEach((rg) => {
-        rg.rot += rg.speed
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(rg.rot)
+      // Dust particles floating inside sphere
+      dustParticles.forEach((p) => {
+        // Drift
+        p.x += p.vx
+        p.y += p.vy
+        // Bounce off sphere boundary
+        const dist = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2)
+        if (dist > R * 0.88) {
+          p.vx *= -0.8
+          p.vy *= -0.8
+          p.x = cx + ((p.x - cx) / dist) * R * 0.86
+          p.y = cy + ((p.y - cy) / dist) * R * 0.86
+        }
+        const pulse = 0.5 + 0.5 * Math.sin(frame * 0.05 + p.x * 0.05)
         ctx.beginPath()
-        ctx.ellipse(0, 0, rg.rx, rg.ry, 0, 0, Math.PI * 2)
-        const p = 0.6 + 0.4 * Math.sin(frame * 0.02)
-        ctx.strokeStyle = `rgba(251,146,60,${rg.alpha * p})`
-        ctx.lineWidth = 1.4
-        ctx.stroke()
-        ctx.restore()
-      })
-
-      // Energy arcs
-      arcs.forEach((arc) => {
-        arc.a += arc.spd
-        const p = 0.4 + 0.6 * Math.abs(Math.sin(frame * 0.045 + arc.a))
-        ctx.beginPath()
-        ctx.arc(cx, cy, arc.rad, arc.a, arc.a + arc.len)
-        ctx.strokeStyle = `rgba(251,146,60,${arc.op * p})`
-        ctx.lineWidth = arc.w
-        ctx.lineCap = 'round'
-        ctx.stroke()
-      })
-
-      // Particles
-      particles.forEach((p) => {
-        p.angle += p.speed
-        const px = cx + Math.cos(p.angle + p.tilt) * p.orbitRx
-        const py = cy + Math.sin(p.angle) * p.orbitRy
-        const pulse = 0.5 + 0.5 * Math.sin(frame * 0.07 + p.angle * 2)
-
-        ctx.beginPath()
-        ctx.arc(px, py, p.sz, 0, Math.PI * 2)
-        ctx.fillStyle = p.color
-        ctx.globalAlpha = p.opacity * pulse
+        ctx.arc(p.x, p.y, p.sz, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${p.hue},90%,62%,${p.op * pulse})`
         ctx.fill()
-        ctx.globalAlpha = 1
       })
 
-      // Glowing nucleus
-      const ns = R * 0.14 + Math.sin(frame * 0.05) * R * 0.025
+      ctx.restore() // end sphere clip
+
+      // ── Fresnel rim — tight bright edge only ───────────
+      const rimG = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, R)
+      rimG.addColorStop(0,    'rgba(234,88,12,0)')
+      rimG.addColorStop(0.50, 'rgba(234,88,12,0.05)')
+      rimG.addColorStop(0.75, 'rgba(251,146,60,0.35)')
+      rimG.addColorStop(0.90, 'rgba(253,186,116,0.70)')
+      rimG.addColorStop(1,    'rgba(255,220,160,0.55)')
+      ctx.beginPath()
+      ctx.arc(cx, cy, R, 0, Math.PI * 2)
+      ctx.fillStyle = rimG
+      ctx.fill()
+
+      // ── Glowing core ────────────────────────────────────
+      const pulse = 0.85 + 0.15 * Math.sin(frame * 0.04)
+      const ns = R * 0.16 * pulse
       const nG = ctx.createRadialGradient(cx, cy, 0, cx, cy, ns)
-      nG.addColorStop(0, 'rgba(255,247,237,1)')
-      nG.addColorStop(0.3, 'rgba(251,146,60,0.9)')
-      nG.addColorStop(0.7, 'rgba(234,88,12,0.5)')
-      nG.addColorStop(1, 'rgba(120,53,15,0)')
+      nG.addColorStop(0,   'rgba(255,252,245,1)')
+      nG.addColorStop(0.3, 'rgba(253,186,116,0.95)')
+      nG.addColorStop(0.65,'rgba(234,88,12,0.6)')
+      nG.addColorStop(1,   'rgba(120,53,15,0)')
       ctx.beginPath()
       ctx.arc(cx, cy, ns, 0, Math.PI * 2)
       ctx.fillStyle = nG
       ctx.fill()
 
-      // Specular highlight (top-left)
-      const specG = ctx.createRadialGradient(
-        cx - R * 0.28, cy - R * 0.28, 0,
-        cx - R * 0.28, cy - R * 0.28, R * 0.38
-      )
-      specG.addColorStop(0, 'rgba(255,247,237,0.28)')
-      specG.addColorStop(0.5, 'rgba(255,247,237,0.07)')
-      specG.addColorStop(1, 'rgba(255,247,237,0)')
-      ctx.fillStyle = specG
-      ctx.fillRect(0, 0, size, size)
+      // Inner corona around core
+      const coronaG = ctx.createRadialGradient(cx, cy, ns, cx, cy, ns * 2.5)
+      coronaG.addColorStop(0,   'rgba(251,146,60,0.25)')
+      coronaG.addColorStop(0.5, 'rgba(234,88,12,0.10)')
+      coronaG.addColorStop(1,   'rgba(0,0,0,0)')
+      ctx.beginPath()
+      ctx.arc(cx, cy, ns * 2.5, 0, Math.PI * 2)
+      ctx.fillStyle = coronaG
+      ctx.fill()
 
-      ctx.restore() // end sphere clip
-
-      // ── Fresnel rim — TIGHT to sphere edge ────────────
-      // Only a thin ring right at the boundary — NOT outside
-      const fresnelG = ctx.createRadialGradient(
-        cx, cy, R * 0.84,   // inner edge of fresnel
-        cx, cy, R           // outer = exactly sphere edge
-      )
-      fresnelG.addColorStop(0, 'rgba(234,88,12,0)')
-      fresnelG.addColorStop(0.5, 'rgba(251,146,60,0.22)')
-      fresnelG.addColorStop(0.82, 'rgba(251,146,60,0.60)')
-      fresnelG.addColorStop(1, 'rgba(253,186,116,0.80)')
-
+      // ── Large specular (3D illusion) ────────────────────
+      const bigSpec = ctx.createRadialGradient(lx, ly, 0, lx, ly, R * 0.52)
+      bigSpec.addColorStop(0,   'rgba(255,210,150,0.32)')
+      bigSpec.addColorStop(0.4, 'rgba(255,170,80,0.12)')
+      bigSpec.addColorStop(1,   'rgba(255,255,255,0)')
       ctx.beginPath()
       ctx.arc(cx, cy, R, 0, Math.PI * 2)
-      ctx.fillStyle = fresnelG
+      ctx.fillStyle = bigSpec
+      ctx.fill()
+
+      // Small sharp specular dot (Glint)
+      const dotX = lx + R * 0.08
+      const dotY = ly + R * 0.08
+      const dotG = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, R * 0.12)
+      dotG.addColorStop(0,   'rgba(255,255,255,1)')
+      dotG.addColorStop(0.4, 'rgba(255,240,200,0.6)')
+      dotG.addColorStop(1,   'rgba(255,255,255,0)')
+      ctx.beginPath()
+      ctx.arc(cx, cy, R, 0, Math.PI * 2)
+      ctx.fillStyle = dotG
+      ctx.fill()
+
+      // ── Ground shadow ───────────────────────────────────
+      const shadowG = ctx.createRadialGradient(
+        cx, cy + R * 1.20, 0,
+        cx, cy + R * 1.20, R * 0.60
+      )
+      shadowG.addColorStop(0,   'rgba(234,88,12,0.25)')
+      shadowG.addColorStop(0.5, 'rgba(120,40,5,0.10)')
+      shadowG.addColorStop(1,   'rgba(0,0,0,0)')
+      ctx.beginPath()
+      ctx.ellipse(cx, cy + R * 1.18, R * 0.58, R * 0.08, 0, 0, Math.PI * 2)
+      ctx.fillStyle = shadowG
       ctx.fill()
 
       animId = requestAnimationFrame(draw)
@@ -287,7 +303,7 @@ function OrbBack({ size }: { size: number }) {
 
     draw()
     return () => cancelAnimationFrame(animId)
-  }, [size])
+  }, [size, isDark])
 
   return (
     <canvas
@@ -298,271 +314,302 @@ function OrbBack({ size }: { size: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// BOT FACE — matches your Spline design:
-// Dark circle head + warm ellipse eyes + ellipse circle body
-// Clean, cute, minimal — NOT scary
+// BOT FACE — Reference Image 2 style
+// Glassy sphere + PILL eyes (rounded rectangle, tall, white)
+// Soft iridescent sheen, cute minimal expression
 // ─────────────────────────────────────────────────────────────
+
 function BotFace({
   size,
   cursor,
+  theme,
 }: {
   size: number
   cursor: { x: number; y: number }
+  theme: Theme
 }) {
-  const svgRef = useRef<SVGSVGElement>(null)
-  const leftEyeRef = useRef<SVGGElement>(null)
-  const rightEyeRef = useRef<SVGGElement>(null)
-  const blinkRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const leftEyeRef  = useRef<SVGRectElement>(null)
+  const rightEyeRef = useRef<SVGRectElement>(null)
+  const blinkRef    = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const isDark      = theme === 'dark'
 
-  // Eye blink loop
+  // Blink loop
   useEffect(() => {
-    const eyeEls = [leftEyeRef.current, rightEyeRef.current]
-
-    const scheduleBlink = () => {
-      const delay = 2500 + Math.random() * 2000
+    const blink = () => {
+      const delay = 2800 + Math.random() * 2200
       blinkRef.current = setTimeout(() => {
-        // Squish eyes to blink
-        eyeEls.forEach(el => {
-          if (el) {
-            el.style.transform = 'scaleY(0.08)'
-            el.style.transformBox = 'fill-box'
-            el.style.transformOrigin = 'center'
-            el.style.transition = 'transform 0.08s ease'
-          }
+        ;[leftEyeRef.current, rightEyeRef.current].forEach((el) => {
+          if (!el) return
+          el.style.transform     = 'scaleY(0.06)'
+          el.style.transformBox  = 'fill-box'
+          el.style.transformOrigin = 'center'
+          el.style.transition    = 'transform 0.08s ease'
         })
         setTimeout(() => {
-          eyeEls.forEach(el => {
-            if (el) {
-              el.style.transform = 'scaleY(1)'
-              el.style.transition = 'transform 0.1s ease'
-            }
+          ;[leftEyeRef.current, rightEyeRef.current].forEach((el) => {
+            if (!el) return
+            el.style.transform  = 'scaleY(1)'
+            el.style.transition = 'transform 0.11s ease'
           })
-          scheduleBlink()
+          blink()
         }, 130)
       }, delay)
     }
-
-    scheduleBlink()
+    blink()
     return () => clearTimeout(blinkRef.current)
   }, [])
 
-  // Look-at — pupils follow cursor
-  const pupilOffset = {
-    x: cursor.x * 5,
-    y: -cursor.y * 4,
-  }
+  // Eye look-at offset
+  const lx = cursor.x * 9      // eyes move more
+  const ly = -cursor.y * 7
 
-  // Eye Y position — look up slightly when cursor is high
-  const eyeLookY = -cursor.y * 3
+  // Pill eye dimensions
+  const eyeW = 22     // pill width
+  const eyeH = 38     // pill height (tall)
+  const eyeR = 11     // pill corner radius
 
-  // Scale: 200 viewBox units = size px
-  const vb = 200
+  // Eye positions
+  const lEyeX = 74
+  const rEyeX = 126
+  const eyeY  = 96
 
   return (
     <svg
-      ref={svgRef}
       width={size}
       height={size}
-      viewBox={`0 0 ${vb} ${vb}`}
+      viewBox="0 0 200 200"
       style={{ display: 'block', overflow: 'visible' }}
     >
       <defs>
-        {/* Main head - dark sphere gradient */}
-        <radialGradient id="faceBody" cx="40%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="#2d1a0e" />
-          <stop offset="45%" stopColor="#1a0e06" />
-          <stop offset="100%" stopColor="#0c0a09" />
+        {/* Main sphere — iridescent/glassy */}
+        <radialGradient id="glassSphere" cx="38%" cy="32%" r="68%">
+          {isDark ? <>
+            <stop offset="0%"   stopColor="#5a2e15" />
+            <stop offset="30%"  stopColor="#3a1a0b" />
+            <stop offset="65%"  stopColor="#251208" />
+            <stop offset="100%" stopColor="#150a05" />
+          </> : <>
+            <stop offset="0%"   stopColor="#ffe8c8" />
+            <stop offset="25%"  stopColor="#ffd4a0" />
+            <stop offset="55%"  stopColor="#f0a850" />
+            <stop offset="85%"  stopColor="#d07020" />
+            <stop offset="100%" stopColor="#a04810" />
+          </>}
         </radialGradient>
 
-        {/* Fresnel rim — tight to face edge */}
-        <radialGradient id="faceRim" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(0,0,0,0)" />
-          <stop offset="75%" stopColor="rgba(234,88,12,0)" />
-          <stop offset="88%" stopColor="rgba(234,88,12,0.18)" />
-          <stop offset="95%" stopColor="rgba(251,146,60,0.55)" />
-          <stop offset="100%" stopColor="rgba(253,186,116,0.7)" />
+        {/* Iridescent color shift — top band */}
+        <linearGradient id="iridescentBand" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stopColor={isDark ? 'rgba(251,146,60,0.25)'  : 'rgba(255,220,120,0.35)'} />
+          <stop offset="35%"  stopColor={isDark ? 'rgba(234,88,12,0.12)'   : 'rgba(255,180,60,0.20)'} />
+          <stop offset="65%"  stopColor={isDark ? 'rgba(180,50,200,0.08)'  : 'rgba(255,160,80,0.15)'} />
+          <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+        </linearGradient>
+
+        {/* Fresnel rim */}
+        <radialGradient id="glassRim" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stopColor="rgba(0,0,0,0)" />
+          <stop offset="74%"  stopColor="rgba(0,0,0,0)" />
+          <stop offset="85%"  stopColor={isDark ? 'rgba(234,88,12,0.15)'  : 'rgba(255,200,100,0.20)'} />
+          <stop offset="93%"  stopColor={isDark ? 'rgba(251,146,60,0.55)' : 'rgba(255,220,140,0.65)'} />
+          <stop offset="100%" stopColor={isDark ? 'rgba(255,210,140,0.80)': 'rgba(255,240,180,0.85)'} />
         </radialGradient>
 
-        {/* Eye fill — warm orange glow */}
-        <radialGradient id="eyeFill" cx="40%" cy="35%" r="60%">
-          <stop offset="0%" stopColor="#fdba74" />
-          <stop offset="45%" stopColor="#fb923c" />
-          <stop offset="100%" stopColor="#ea580c" />
+        {/* Eye fill — white/cream pill (Image 2 style) */}
+        <radialGradient id="eyePill" cx="35%" cy="25%" r="65%">
+          <stop offset="0%"   stopColor={isDark ? '#fff7ed' : '#ffffff'} />
+          <stop offset="50%"  stopColor={isDark ? '#fed7aa' : '#fef9f0'} />
+          <stop offset="100%" stopColor={isDark ? '#fdba74' : '#fde8c0'} />
         </radialGradient>
 
-        {/* Eye glow filter */}
-        <filter id="eyeGlowF" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="2.5" result="blur" />
+        {/* Eye glow */}
+        <filter id="pillGlow" x="-40%" y="-25%" width="180%" height="150%">
+          <feGaussianBlur stdDeviation="2" result="blur"/>
           <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
           </feMerge>
         </filter>
 
-        {/* Soft outer glow */}
-        <filter id="faceGlowF" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="4" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
+        {/* Large specular highlight */}
+        <radialGradient id="bigSpec" cx="35%" cy="28%" r="42%">
+          <stop offset="0%"   stopColor={isDark ? 'rgba(255,220,160,0.30)' : 'rgba(255,255,240,0.55)'} />
+          <stop offset="50%"  stopColor={isDark ? 'rgba(255,180,80,0.10)'  : 'rgba(255,240,200,0.20)'} />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </radialGradient>
 
-        {/* Clip to head circle */}
-        <clipPath id="headCircle">
-          <circle cx="100" cy="105" r="70" />
+        {/* Small sharp specular */}
+        <radialGradient id="sharpSpec" cx="32%" cy="25%" r="14%">
+          <stop offset="0%"   stopColor="rgba(255,255,255,0.90)" />
+          <stop offset="60%"  stopColor="rgba(255,245,220,0.40)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </radialGradient>
+
+        {/* Clip to circle */}
+        <clipPath id="sphereClip">
+          <circle cx="100" cy="100" r="72" />
         </clipPath>
 
-        {/* Specular highlight */}
-        <radialGradient id="faceSpec" cx="35%" cy="30%" r="38%">
-          <stop offset="0%" stopColor="rgba(255,247,237,0.20)" />
-          <stop offset="100%" stopColor="rgba(255,247,237,0)" />
-        </radialGradient>
+        {/* Antenna glow */}
+        <filter id="antGlow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="2.5"/>
+        </filter>
       </defs>
 
-      {/* ── Outer atmospheric haze ── */}
-      <circle cx="100" cy="105" r="82"
+      {/* ── Outer orbit ring ── */}
+      <circle cx="100" cy="100" r="80"
         fill="none"
-        stroke="rgba(234,88,12,0.1)"
-        strokeWidth="18" />
+        stroke={isDark ? 'rgba(234,88,12,0.12)' : 'rgba(234,88,12,0.18)'}
+        strokeWidth="1"
+        strokeDasharray="3 9"
+      />
 
-      {/* ── Head body ── */}
-      <circle cx="100" cy="105" r="70"
-        fill="url(#faceBody)" />
+      {/* ── Sphere body ── */}
+      <circle cx="100" cy="100" r="72"
+        fill="url(#glassSphere)" />
 
-      {/* ── Fresnel rim (tight) ── */}
-      <circle cx="100" cy="105" r="70"
-        fill="url(#faceRim)" />
+      {/* ── Iridescent color band (image 2 feel) ── */}
+      <circle cx="100" cy="100" r="72"
+        fill="url(#iridescentBand)"
+        opacity="0.7" />
 
-      {/* ── Subtle circuit/texture lines ── */}
-      <g clipPath="url(#headCircle)" opacity="0.07">
-        <line x1="60" y1="80" x2="140" y2="80" stroke="#fb923c" strokeWidth="0.6" />
-        <line x1="60" y1="95" x2="140" y2="95" stroke="#fb923c" strokeWidth="0.6" />
-        <line x1="80" y1="60" x2="80" y2="150" stroke="#fb923c" strokeWidth="0.6" />
-        <line x1="120" y1="60" x2="120" y2="150" stroke="#fb923c" strokeWidth="0.6" />
+      {/* ── Subtle grid texture ── */}
+      <g clipPath="url(#sphereClip)" opacity={isDark ? 0.05 : 0.04}>
+        {Array.from({ length: 8 }, (_, i) => (
+          <line key={`h${i}`}
+            x1="28" y1={45 + i * 16}
+            x2="172" y2={45 + i * 16}
+            stroke={isDark ? '#fb923c' : '#ea580c'}
+            strokeWidth="0.5"
+          />
+        ))}
       </g>
 
-      {/* ── LEFT EYE — ellipse shape like your Spline ── */}
-      <g
-        ref={leftEyeRef}
-        style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-      >
-        {/* Eye glow halo */}
-        <ellipse
-          cx={72} cy={100 + eyeLookY}
-          rx="18" ry="13"
-          fill="rgba(234,88,12,0.15)"
-          filter="url(#eyeGlowF)"
+      {/* ── LEFT EYE — tall pill shape ── */}
+      <g transform={`translate(${lx * 0.6},${ly * 0.6})`}>
+        {/* Glow halo behind pill */}
+        <rect
+          x={lEyeX - eyeW / 2 - 5} y={eyeY - eyeH / 2 - 5}
+          width={eyeW + 10} height={eyeH + 10}
+          rx={eyeR + 5}
+          fill={isDark ? 'rgba(251,146,60,0.18)' : 'rgba(255,200,80,0.22)'}
+          filter="url(#pillGlow)"
         />
-        {/* Eye socket (dark background) */}
-        <ellipse
-          cx={72} cy={100 + eyeLookY}
-          rx="13" ry="9.5"
-          fill="#0c0a09"
+        {/* Pill body */}
+        <rect
+          ref={leftEyeRef}
+          x={lEyeX - eyeW / 2 + lx * 0.4}
+          y={eyeY - eyeH / 2 + ly * 0.4}
+          width={eyeW}
+          height={eyeH}
+          rx={eyeR}
+          fill="url(#eyePill)"
+          filter="url(#pillGlow)"
+          style={{
+            transformBox: 'fill-box',
+            transformOrigin: 'center',
+          }}
         />
-        {/* Iris — warm orange ellipse (matching your Spline) */}
-        <ellipse
-          cx={72 + pupilOffset.x * 0.5}
-          cy={100 + eyeLookY + pupilOffset.y * 0.5}
-          rx="10" ry="7.5"
-          fill="url(#eyeFill)"
-          filter="url(#eyeGlowF)"
+        {/* Pill inner shadow (depth) */}
+        <rect
+          x={lEyeX - eyeW / 2 + lx * 0.4 + 4}
+          y={eyeY - eyeH / 2 + ly * 0.4 + 6}
+          width={eyeW - 8}
+          height={eyeH - 10}
+          rx={eyeR - 3}
+          fill="rgba(200,90,10,0.12)"
         />
-        {/* Pupil */}
+        {/* Specular on pill */}
         <ellipse
-          cx={72 + pupilOffset.x}
-          cy={100 + eyeLookY + pupilOffset.y}
-          rx="4.5" ry="3.5"
-          fill="#0c0a09"
-        />
-        {/* Specular dot */}
-        <ellipse
-          cx={69 + pupilOffset.x * 0.3}
-          cy={97.5 + eyeLookY + pupilOffset.y * 0.3}
-          rx="2.2" ry="1.6"
-          fill="rgba(255,247,237,0.85)"
+          cx={lEyeX - 4 + lx * 0.4}
+          cy={eyeY - 10 + ly * 0.4}
+          rx={5} ry={3.5}
+          fill="rgba(255,255,255,0.55)"
         />
       </g>
 
       {/* ── RIGHT EYE ── */}
-      <g
-        ref={rightEyeRef}
-        style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-      >
-        <ellipse
-          cx={128} cy={100 + eyeLookY}
-          rx="18" ry="13"
-          fill="rgba(234,88,12,0.15)"
-          filter="url(#eyeGlowF)"
+      <g transform={`translate(${lx * 0.6},${ly * 0.6})`}>
+        <rect
+          x={rEyeX - eyeW / 2 - 5} y={eyeY - eyeH / 2 - 5}
+          width={eyeW + 10} height={eyeH + 10}
+          rx={eyeR + 5}
+          fill={isDark ? 'rgba(251,146,60,0.18)' : 'rgba(255,200,80,0.22)'}
+          filter="url(#pillGlow)"
+        />
+        <rect
+          ref={rightEyeRef}
+          x={rEyeX - eyeW / 2 + lx * 0.4}
+          y={eyeY - eyeH / 2 + ly * 0.4}
+          width={eyeW}
+          height={eyeH}
+          rx={eyeR}
+          fill="url(#eyePill)"
+          filter="url(#pillGlow)"
+          style={{
+            transformBox: 'fill-box',
+            transformOrigin: 'center',
+          }}
+        />
+        <rect
+          x={rEyeX - eyeW / 2 + lx * 0.4 + 4}
+          y={eyeY - eyeH / 2 + ly * 0.4 + 6}
+          width={eyeW - 8}
+          height={eyeH - 10}
+          rx={eyeR - 3}
+          fill="rgba(200,90,10,0.12)"
         />
         <ellipse
-          cx={128} cy={100 + eyeLookY}
-          rx="13" ry="9.5"
-          fill="#0c0a09"
-        />
-        <ellipse
-          cx={128 + pupilOffset.x * 0.5}
-          cy={100 + eyeLookY + pupilOffset.y * 0.5}
-          rx="10" ry="7.5"
-          fill="url(#eyeFill)"
-          filter="url(#eyeGlowF)"
-        />
-        <ellipse
-          cx={128 + pupilOffset.x}
-          cy={100 + eyeLookY + pupilOffset.y}
-          rx="4.5" ry="3.5"
-          fill="#0c0a09"
-        />
-        <ellipse
-          cx={125 + pupilOffset.x * 0.3}
-          cy={97.5 + eyeLookY + pupilOffset.y * 0.3}
-          rx="2.2" ry="1.6"
-          fill="rgba(255,247,237,0.85)"
+          cx={rEyeX - 4 + lx * 0.4}
+          cy={eyeY - 10 + ly * 0.4}
+          rx={5} ry={3.5}
+          fill="rgba(255,255,255,0.55)"
         />
       </g>
 
-      {/* ── Face specular highlight ── */}
-      <circle cx="100" cy="105" r="70"
-        fill="url(#faceSpec)" />
+      {/* ── Fresnel rim ── */}
+      <circle cx="100" cy="100" r="72"
+        fill="url(#glassRim)" />
 
-      {/* ── Small antenna ── */}
-      <line x1="100" y1="35" x2="100" y2="22"
-        stroke="#fb923c" strokeWidth="2"
-        strokeLinecap="round" opacity="0.7" />
-      <circle cx="100" cy="19" r="4.5"
-        fill="#ea580c"
-        filter="url(#eyeGlowF)" />
-      <circle cx="100" cy="19" r="2"
-        fill="rgba(255,247,237,0.9)" />
+      {/* ── Large specular (main 3D highlight) ── */}
+      <circle cx="100" cy="100" r="72"
+        fill="url(#bigSpec)" />
 
-      {/* ── Ear nubs (simple rounded rects) ── */}
-      <rect x="24" y="92" width="8" height="18" rx="4"
-        fill="#1c1917"
-        stroke="rgba(234,88,12,0.35)" strokeWidth="1" />
-      <rect x="168" y="92" width="8" height="18" rx="4"
-        fill="#1c1917"
-        stroke="rgba(234,88,12,0.35)" strokeWidth="1" />
+      {/* ── Small sharp specular dot ── */}
+      <circle cx="100" cy="100" r="72"
+        fill="url(#sharpSpec)" />
 
-      {/* ── Status light (green pulse) ── */}
-      <circle cx="138" cy="76" r="3" fill="#4ade80" opacity="0.85">
-        <animate attributeName="opacity"
-          values="0.85;0.25;0.85" dur="2.1s" repeatCount="indefinite" />
-      </circle>
-
-      {/* ── Cheek blush ── */}
-      <ellipse cx="58" cy="118" rx="11" ry="6"
-        fill="rgba(251,146,60,0.14)" />
-      <ellipse cx="142" cy="118" rx="11" ry="6"
-        fill="rgba(251,146,60,0.14)" />
-
-      {/* ── Subtle smile line (resting expression) ── */}
-      <path
-        d="M 83 126 Q 100 133 117 126"
-        fill="none"
-        stroke="rgba(251,146,60,0.45)"
-        strokeWidth="2.2"
-        strokeLinecap="round"
+      {/* ── Ground shadow ellipse (floating weight) ── */}
+      <ellipse cx="100" cy="185" rx="45" ry="6"
+        fill={isDark ? 'rgba(234,88,12,0.18)' : 'rgba(180,80,10,0.15)'}
+        style={{ filter: 'blur(4px)' }}
       />
+
+      {/* ── Antenna ── */}
+      <line x1="100" y1="28" x2="100" y2="15"
+        stroke={isDark ? '#fb923c' : '#ea580c'}
+        strokeWidth="2" strokeLinecap="round" opacity="0.75" />
+      <circle cx="100" cy="12" r="5"
+        fill={isDark ? '#ea580c' : '#f97316'}
+        filter="url(#pillGlow)" />
+      <circle cx="100" cy="12" r="2.2"
+        fill="rgba(255,250,240,0.92)" />
+
+      {/* ── Ear nubs ── */}
+      {/* <rect x="22" y="88" width="9" height="20" rx="4.5"
+        fill={isDark ? '#1c1917' : '#f5e8d5'}
+        stroke={isDark ? 'rgba(234,88,12,0.4)' : 'rgba(234,88,12,0.5)'}
+        strokeWidth="1.2" />
+      <rect x="169" y="88" width="9" height="20" rx="4.5"
+        fill={isDark ? '#1c1917' : '#f5e8d5'}
+        stroke={isDark ? 'rgba(234,88,12,0.4)' : 'rgba(234,88,12,0.5)'}
+        strokeWidth="1.2" /> */}
+
+      {/* ── Status light ── */}
+      <circle cx="136" cy="72" r="3.2"
+        fill="#4ade80" opacity="0.85">
+        <animate attributeName="opacity"
+          values="0.85;0.25;0.85" dur="2.2s" repeatCount="indefinite"/>
+      </circle>
     </svg>
   )
 }

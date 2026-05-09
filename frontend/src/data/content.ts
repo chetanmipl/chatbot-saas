@@ -14,7 +14,7 @@ export const HERO = {
     'Train a chatbot on your documents in minutes. Embed it anywhere. Give every customer instant, accurate answers — 24/7.',
   cta: {
     primary:   { label: 'Start building free →', href: '/register' },
-    secondary: { label: 'See how it works', href: '#how-it-works' },
+    secondary: { label: '▶  See demo', href: '#how-it-works' },
   },
 }
 

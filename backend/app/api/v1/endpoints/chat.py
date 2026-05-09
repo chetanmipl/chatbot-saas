@@ -13,6 +13,9 @@ from app.schemas.chat import ChatRequest
 from app.ai.rag_pipeline import stream_chat_response
 from fastapi import HTTPException
 
+from sqlalchemy import func, distinct
+from sqlalchemy import UUID
+
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
@@ -110,15 +113,28 @@ async def chat_stream(
             system_prompt=chatbot.system_prompt,
             domain=chatbot.domain or "general",   # ← pass domain
             db=db,
+            bot_name=chatbot.name,
         ):
             full_response.append(token)
             yield token
+        
+        full_text = "".join(full_response)
+        tokens    = len(full_text.split()) * 1.3  # rough estimate
 
         bot_msg = Message(
-            role="assistant", content="".join(full_response),
+            role="assistant",
+            content=full_text,
             session_id=data.session_id,
-            chatbot_id=chatbot.id, tenant_id=tenant.id,
+            chatbot_id=chatbot.id,
+            tenant_id=tenant.id,
+            tokens_used=int(tokens),   # ← save this
         )
+
+        # bot_msg = Message(
+        #     role="assistant", content="".join(full_response),
+        #     session_id=data.session_id,
+        #     chatbot_id=chatbot.id, tenant_id=tenant.id,
+        # )
         db.add(bot_msg)
         await db.commit()
 
@@ -141,4 +157,35 @@ async def get_history(
     return [
         {"role": m.role, "content": m.content, "created_at": m.created_at}
         for m in messages
+    ]
+
+@router.get("/sessions/{chatbot_id}")
+async def list_sessions(
+    chatbot_id: UUID,
+    tenant:     Tenant       = Depends(get_current_tenant),
+    db:         AsyncSession = Depends(get_db),
+):
+    
+    result = await db.execute(
+        select(
+            Message.session_id,
+            func.count(Message.id).label("message_count"),
+            func.max(Message.created_at).label("last_message"),
+        )
+        .where(
+            Message.chatbot_id == chatbot_id,
+            Message.tenant_id  == tenant.id,
+        )
+        .group_by(Message.session_id)
+        .order_by(func.max(Message.created_at).desc())
+        .limit(50)
+    )
+    rows = result.fetchall()
+    return [
+        {
+            "session_id":    r.session_id,
+            "message_count": r.message_count,
+            "last_message":  r.last_message,
+        }
+        for r in rows
     ]
